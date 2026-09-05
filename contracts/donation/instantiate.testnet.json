@@ -1,0 +1,12 @@
+{
+  "native_denom": "utestcore",
+  "projects": [
+    {
+      "id": "harbor",
+      "goal_micro_tx": "24000000000",
+      "status": "active",
+      "metadata_token_id": "sfaith-testcore15xhvchxtkstyhqvpl8pdcfkj69khfp0t8rmhxv",
+      "beneficiary": "testcore15xhvchxtkstyhqvpl8pdcfkj69khfp0t8rmhxv"
+    }
+  ]
+}

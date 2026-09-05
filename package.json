@@ -1,0 +1,57 @@
+{
+  "name": "soundfaith",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
+    "coreum:deploy": "tsx scripts/deploy-contract.ts",
+    "coreum:migrate": "tsx scripts/migrate-contract.ts",
+    "coreum:migrate:credential": "powershell -ExecutionPolicy Bypass -File .\\scripts\\migrate-from-windows-credential.ps1",
+    "coreum:deploy:credential": "powershell -ExecutionPolicy Bypass -File .\\scripts\\deploy-from-windows-credential.ps1",
+    "coreum:token:issue": "tsx scripts/issue-metadata-token.ts",
+    "coreum:token:issue:credential": "powershell -ExecutionPolicy Bypass -File .\\scripts\\issue-token-from-windows-credential.ps1",
+    "coreum:optimize": "wasm-opt .\\contracts\\donation\\target\\wasm32-unknown-unknown\\release\\soundfaith_donation.wasm -o .\\contracts\\donation\\target\\wasm32-unknown-unknown\\release\\soundfaith_donation.optimized.wasm -Oz --mvp-features --llvm-memory-copy-fill-lowering",
+    "coreum:indexer": "tsx scripts/coreum-indexer.ts",
+    "coreum:indexer:credential": "powershell -ExecutionPolicy Bypass -File .\\scripts\\indexer-from-windows-credential.ps1",
+    "coreum:indexer:install": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-indexer-task.ps1",
+    "coreum:indexer:uninstall": "powershell -ExecutionPolicy Bypass -File .\\scripts\\uninstall-indexer-task.ps1",
+    "coreum:relayer": "tsx scripts/coreum-relayer.ts",
+    "coreum:relayer:credential": "powershell -ExecutionPolicy Bypass -File .\\scripts\\relayer-from-windows-credential.ps1",
+    "coreum:relayer:install": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-relayer-task.ps1",
+    "coreum:relayer:uninstall": "powershell -ExecutionPolicy Bypass -File .\\scripts\\uninstall-relayer-task.ps1"
+    ,"coreum:register": "tsx scripts/register-project.ts",
+    "coreum:seed:samples": "tsx scripts/seed-sample-projects.ts",
+    "coreum:claim": "tsx scripts/claim-project.ts",
+    "coreum:build:wasm": "cargo build --manifest-path contracts/donation/Cargo.toml --release --target wasm32-unknown-unknown"
+  },
+  "dependencies": {
+    "@cosmjs/cosmwasm-stargate": "^0.38.1",
+    "@cosmjs/crypto": "^0.39.0",
+    "@cosmjs/encoding": "^0.39.0",
+    "@cosmjs/proto-signing": "^0.39.0",
+    "@cosmjs/stargate": "^0.39.0",
+    "@supabase/supabase-js": "^2.115.0",
+    "@vitejs/plugin-react": "latest",
+    "coreum-js": "^2.20.0",
+    "lucide-react": "^0.468.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "tsx": "^4.23.13"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "autoprefixer": "latest",
+    "binaryen": "^132.0.0",
+    "postcss": "latest",
+    "prettier": "^3.9.6",
+    "tailwindcss": "^3.4.17",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}

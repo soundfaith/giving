@@ -1,0 +1,13 @@
+services:
+  soundfaith-indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile.indexer
+    restart: unless-stopped
+    env_file:
+      - .env.indexer
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
