@@ -84,6 +84,8 @@ https://gqnrvnsoyhirpvcvxapl.supabase.co/auth/v1/callback
 
 The app sends the current Vercel origin as the OAuth redirect target. The Google provider must be enabled in Supabase, and the exact Vercel URL must be listed in Supabase's redirect allowlist.
 
+After pushing changes to `main`, confirm that the Vercel production alias points to the new deployment rather than only to a generated preview URL.
+
 Check status before applying migrations:
 
 ```powershell
