@@ -76,6 +76,14 @@ Then link the project:
 supabase link --project-ref gqnrvnsoyhirpvcvxapl
 ```
 
+For Google sign-in on Vercel, add the deployed Vercel origin to Supabase Dashboard -> Authentication -> URL Configuration -> Redirect URLs. Also configure the Google OAuth provider with this Supabase callback URL:
+
+```text
+https://gqnrvnsoyhirpvcvxapl.supabase.co/auth/v1/callback
+```
+
+The app sends the current Vercel origin as the OAuth redirect target. The Google provider must be enabled in Supabase, and the exact Vercel URL must be listed in Supabase's redirect allowlist.
+
 Check status before applying migrations:
 
 ```powershell

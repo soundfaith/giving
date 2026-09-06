@@ -250,11 +250,16 @@ export const identityRepository = {
       };
 
     if (provider === "google" || provider === "apple") {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: window.location.origin },
+        options: {
+          redirectTo: `${window.location.origin}${window.location.pathname}`,
+          skipBrowserRedirect: true,
+        },
       });
       if (error) throw error;
+      if (!data.url) throw new Error(`Unable to start ${provider} sign-in. Check the OAuth provider configuration.`);
+      window.location.assign(data.url);
       return {
         id: "redirecting",
         displayName: `Connecting with ${provider}`,
