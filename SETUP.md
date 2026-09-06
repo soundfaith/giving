@@ -3,8 +3,8 @@
 ## Required accounts
 
 1. **Supabase**: database, Auth, Storage, and optional Edge Functions.
-2. **Coreum**: testnet wallet, faucet funds, RPC/REST access, and later a mainnet wallet.
-3. **Social auth provider**: Google/Apple OAuth or email magic links through Supabase Auth. The Coreum wallet is generated and encrypted locally in the browser; no social wallet custody provider is required.
+2. **TX**: testnet wallet, faucet funds, RPC/REST access, and later a mainnet wallet.
+3. **Social auth provider**: Google/Apple OAuth or email magic links through Supabase Auth. The TX wallet is generated and encrypted locally in the browser; no social wallet custody provider is required.
 4. **Vercel**: frontend deployment and environment variables.
 5. **Namecheap**: domain DNS management.
 
@@ -18,13 +18,13 @@
 5. Enable Google, Apple, and email OTP under Authentication > Providers.
 6. Add `http://localhost:5173` and the production Vercel/Namecheap URLs under Authentication > URL Configuration.
 7. The migrations create/configure `project-photos`. Delete Storage objects through the Dashboard or Storage API, not direct SQL.
-8. Configure database webhooks or an Edge Function to reconcile confirmed Coreum transactions.
+8. Configure database webhooks or an Edge Function to reconcile confirmed TX transactions.
 
 The reviewer council is wallet-identified but not automatically trusted. A council steward must activate reviewer applications in `public.reviewers`; active reviewers vote at `#/review`. Three independent approvals publish a project and three rejections close it. The steward activation step should eventually move to an on-chain governance contract or multisig before production.
 
 During the MVP, the seeded wallet `testcore1hzt8gdqgvhxut95sn4cy9c2xh0t9m2uamwy726` can open `#/admin`. The admin can activate reviewers, suspend reviewers, change approval/rejection thresholds, publish projects, and close projects. Before deployment, disable or replace that row in `public.admin_wallets` and move these powers to reviewed multisig or on-chain governance.
 
-The primary reconciliation path is the continuously running Coreum indexer in `scripts/coreum-indexer.ts`, not a webhook. Run it as a private worker with the Supabase service-role key. It stores a block cursor in `indexer_state`, scans contract events after downtime, and uses the transaction hash as an idempotency key. Webhooks may still be used as an optional alert, but they are not the source of truth.
+The primary reconciliation path is the continuously running TX indexer in `scripts/coreum-indexer.ts`, not a webhook. Run it as a private worker with the Supabase service-role key. It stores a block cursor in `indexer_state`, scans contract events after downtime, and uses the transaction hash as an idempotency key. Webhooks may still be used as an optional alert, but they are not the source of truth.
 
 ## Local environment
 

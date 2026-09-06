@@ -33,7 +33,7 @@ Use an expressive serif display face for headlines (DM Serif Display or Fraunces
 ## Interaction requirements
 - Project category tabs filter visible cards.
 - Search filters projects by name, church, location, or category.
-- Connect wallet opens a small accessible modal with social login choices and Coreum testnet status.
+- Connect wallet opens a small accessible modal with social login choices and TX testnet status.
 - Donate buttons open a donation sheet/modal with selectable TX amounts and a simulated wallet confirmation state.
 - Mobile navigation collapses to a menu button.
 - Use tasteful reveal and hover transitions without making content hard to use.

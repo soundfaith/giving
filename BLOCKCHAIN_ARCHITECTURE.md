@@ -4,7 +4,7 @@
 
 SoundFaith currently uses one deployed CosmWasm donation-vault contract for project custody and donations.
 
-The Coreum wallet address is the durable owner and beneficiary identifier for funds. Supabase user IDs and emails are application identity and moderation data; they are not the destination for project funds.
+The TX wallet address is the durable owner and beneficiary identifier for funds. Supabase user IDs and emails are application identity and moderation data; they are not the destination for project funds.
 
 The current project workflow has two stages:
 
@@ -21,7 +21,7 @@ The active testnet contract is:
 
 `testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg`
 
-It was deployed as code ID `3939` on `coreum-testnet-1`.
+It was deployed as code ID `3939` on TX testnet (`coreum-testnet-1`).
 
 This contract:
 

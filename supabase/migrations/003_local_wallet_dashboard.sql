@@ -1,5 +1,5 @@
 -- The browser-owned wallet is the signing identity. Supabase stores only the
--- authenticated email and its associated public Coreum address.
+-- authenticated email and its associated public TX address.
 alter table public.profiles drop column if exists provider;
 alter table public.identities drop column if exists provider;
 

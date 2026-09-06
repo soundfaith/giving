@@ -1,10 +1,10 @@
 # SoundFaith
 
-SoundFaith is a church-project fundraising app focused on sound, AV, accessibility, and gathering spaces. Donations use native TX on Coreum. The current environment is a Coreum testnet MVP with a CosmWasm vault, a metadata token, Supabase integration boundaries, and a responsive React frontend.
+SoundFaith is a church-project fundraising app focused on sound, AV, accessibility, and gathering spaces. Donations use native TX on the TX blockchain. The current environment is a TX testnet MVP with a CosmWasm vault, a metadata token, Supabase integration boundaries, and a responsive React frontend.
 
 ## Current testnet deployment
 
-- Network: `coreum-testnet-1`
+- Network: `coreum-testnet-1` (TX testnet)
 - Owner/deployer wallet: `testcore15xhvchxtkstyhqvpl8pdcfkj69khfp0t8rmhxv`
 - HD path: `m/44'/990'/0'/0/0`
 - Metadata token: `sfaith-testcore15xhvchxtkstyhqvpl8pdcfkj69khfp0t8rmhxv`
@@ -20,9 +20,9 @@ See [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) and [BLOCKCHAIN_ARCHITECTURE.
 ```text
 React/Vercel frontend
   -> Supabase Auth + public project reads
-  -> Coreum wallet signer
+  -> TX wallet signer
   -> CosmWasm donation vault
-  -> Coreum transaction indexer
+  -> TX transaction indexer
   -> Supabase donation ledger
 ```
 
@@ -34,7 +34,7 @@ The smart token is metadata-only. It identifies public project metadata; it is n
 
 ### Donation tracking
 
-The source of truth is Coreum transaction history, not a webhook. [scripts/coreum-indexer.ts](scripts/coreum-indexer.ts) scans only our contract address, requires the expected donation event attributes, persists a cursor in Supabase, and upserts by transaction hash. It can replay missed blocks after downtime.
+The source of truth is TX transaction history, not a webhook. [scripts/coreum-indexer.ts](scripts/coreum-indexer.ts) scans only our contract address, requires the expected donation event attributes, persists a cursor in Supabase, and upserts by transaction hash. It can replay missed blocks after downtime.
 
 Run it as a private always-on worker with the Supabase service-role key. Do not run it in the browser or expose the service-role key to Vercel client code.
 
@@ -126,7 +126,7 @@ Follow [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) for the exact Rust, WASM, 
 4. Add beneficiary claim UI and a safer multi-party/admin policy before real funds.
 5. Add contract migration/versioning, pause/emergency policy, formal tests, and an external security review.
 6. Test exact-denom handling, goal edge cases, duplicate indexer events, chain reorg/replay behavior, and failed signatures.
-7. Run a testnet pilot before changing any configuration to Coreum mainnet.
+7. Run a testnet pilot before changing any configuration to TX mainnet.
 
 ## Contract migration and security review
 

@@ -1,6 +1,6 @@
 -- Destructive demo reset.
 -- Keeps only the Supabase profile/auth identity linked to the admin wallet below.
--- This does not alter Coreum contract state or move on-chain funds.
+-- This does not alter TX contract state or move on-chain funds.
 
 create table if not exists public.indexer_state (
   id text primary key,

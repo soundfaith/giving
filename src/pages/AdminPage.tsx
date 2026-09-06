@@ -11,7 +11,7 @@ export function AdminPage() {
     await resolveProject(project.id, status);
     const nextStatus = status === "approve" ? "approved_pending_chain" : "closed";
     setProjects((items) => items.map((item) => item.id === project.id ? { ...item, status: nextStatus } : item));
-    setMessage(status === "approve" ? "Review bypassed. The private chain relayer will register the project on Coreum." : "Project closed.");
+    setMessage(status === "approve" ? "Review bypassed. The private chain relayer will register the project on TX." : "Project closed.");
   } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to resolve project"); } };
   const thresholds = async (project: AdminProject, approvals: string, rejections: string) => { try { const nextApprovals = Math.max(1, Number(approvals)); const nextRejections = Math.max(1, Number(rejections)); await setReviewThresholds(project.id, nextApprovals, nextRejections); setProjects((items) => items.map((item) => item.id === project.id ? { ...item, approval_threshold: nextApprovals, rejection_threshold: nextRejections } : item)); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to update thresholds"); } };
   if (loading) return <main className="admin-page section-wrap"><p className="profile-empty">Loading admin controls...</p></main>;

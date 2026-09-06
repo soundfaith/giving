@@ -31,7 +31,7 @@ export function ProfilePage() {
       setOwnedProjects(dashboard.ownedProjects);
       setDonations(dashboard.donations);
       setWallets(localWallets);
-      const address = localAddress ?? dashboard.profile?.wallet_address;
+      const address = dashboard.profile?.wallet_address ?? localAddress;
       const balances = address ? await getCoreumBalances(address) : null;
       setBalance(balances?.native ?? null);
     } catch (error) {
@@ -98,6 +98,7 @@ export function ProfilePage() {
       const next = await switchBrowserWallet(id);
       setWallets((current) => current.map((wallet) => wallet.id === next.id ? { ...wallet, name: next.name, address: next.address } : wallet));
       setProfile((current) => ({ ...(current ?? {}), wallet_address: next.address }));
+      await identityRepository.syncProfile(next.address);
       const balances = await getCoreumBalances(next.address);
       setBalance(balances.native);
       setMessage(`Using ${next.name}.`);

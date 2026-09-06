@@ -1,6 +1,6 @@
 # SoundFaith Deployment Runbook
 
-This runbook is for the repository's Coreum testnet and Supabase deployment workflow.
+This runbook is for the repository's TX testnet and Supabase deployment workflow.
 
 ## Security rules
 

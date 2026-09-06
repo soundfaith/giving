@@ -53,7 +53,7 @@ async function listVaults() {
   const database = await openVaultDatabase();
   return new Promise<StoredVault[]>((resolve, reject) => {
     const request = database.transaction(storeName, "readonly").objectStore(storeName).getAll();
-    request.onsuccess = () => resolve((request.result as StoredVault[]).filter((vault) => vault.id !== "coreum-testnet").map((vault) => ({ ...vault, name: vault.name ?? "Coreum wallet" })));
+    request.onsuccess = () => resolve((request.result as StoredVault[]).filter((vault) => vault.id !== "coreum-testnet").map((vault) => ({ ...vault, name: vault.name ?? "TX wallet" })));
     request.onerror = () => reject(request.error ?? new Error("Unable to read local wallet storage"));
   });
 }

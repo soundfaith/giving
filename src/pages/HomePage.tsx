@@ -1,25 +1,209 @@
-import { ArrowUpRight, Search, Sparkles, X } from "lucide-react";
+import { ArrowUpRight, Zap, Sparkles, Smartphone, Wallet, TrendingUp, Lock, Link2, Shield } from "lucide-react";
 import type { Project } from "../lib/supabase";
-import { categories, formatMoney } from "../lib/projects";
-import { ProjectCard } from "../components/ProjectCard";
+import { formatMoney } from "../lib/projects";
 import { Progress, ProjectVisual } from "../components/ProjectPrimitives";
 
-export function HomePage({ projects, activeCategory, query, onCategoryChange, onQueryChange, onProject, onDonate }: {
-  projects: Project[]; activeCategory: typeof categories[number]; query: string;
-  onCategoryChange: (category: typeof categories[number]) => void; onQueryChange: (query: string) => void;
-  onProject: (project: Project) => void; onDonate: (project: Project) => void;
+export function HomePage({ projects, onProject, onDonate }: {
+  projects: Project[];
+  onProject: (project: Project) => void;
+  onDonate: (project: Project) => void;
 }) {
-  const featured = projects[0];
-  const visibleProjects = projects.filter((project) => {
-    const matchesCategory = activeCategory === "All projects" || project.category === activeCategory;
-    const haystack = `${project.title} ${project.church} ${project.location} ${project.category}`.toLowerCase();
-    return matchesCategory && haystack.includes(query.toLowerCase());
-  });
-  if (!featured) return <main className="empty-state section-wrap"><Sparkles size={20} /><h3>No projects available</h3><p>Check back soon for new church projects.</p></main>;
-  return <main id="top">
-    <section className="hero section-wrap"><div className="hero-copy reveal reveal-one"><p className="eyebrow"><span className="eyebrow-dot" /> On-chain giving, human scale</p><h1>Fund the spaces<br /><em>where faith</em> comes alive.</h1><p className="hero-description">SoundFaith connects generous people with the church projects making room for more belonging, beauty, and voice.</p><div className="hero-actions"><a className="button button-coral" href="#/projects">Browse projects <ArrowUpRight size={16} /></a><a className="text-link" href="#/how-it-works">See how it works <span>↗</span></a></div></div><div className="hero-aside reveal reveal-two"><div className="hero-note"><span className="note-index">01</span><span>Small gifts.<br />Lasting echoes.</span></div><div className="hero-rule" /><p className="hero-aside-copy">Every project is verified by a local church team and every contribution is visible on Coreum.</p></div><div className="hero-stats reveal reveal-three"><div><strong>42</strong><span>projects funded</span></div><div><strong>$184k</strong><span>given by community</span></div><div className="chain-status"><span className="status-orbit"><span /></span><div><strong>Coreum</strong><span>testnet is live</span></div></div></div></section>
-    <section className="feature-section section-wrap" id="projects"><div className="section-kicker"><span>Featured project</span><span className="kicker-line" /><span>01 / {String(projects.length).padStart(2, "0")}</span></div><div className="feature-layout"><ProjectVisual project={featured} featured /><article className="feature-panel"><div className="feature-panel-top"><span className="category-label">{featured.category}</span><span className="feature-location">{featured.location}</span></div><p className="feature-church">{featured.church}</p><h2>{featured.title}</h2><p className="feature-description">{featured.description}</p><div className="funding-detail"><div className="funding-numbers"><span><strong>{formatMoney(featured.raised)}</strong> raised</span><span>of {formatMoney(featured.goal)}</span></div><Progress project={featured} large /><div className="funding-footer"><span><b>{Math.round((featured.raised / featured.goal) * 100)}%</b> funded</span><span>{featured.donors} neighbors have given</span></div></div><button className="button button-coral feature-donate" onClick={() => onDonate(featured)}>Support this project <ArrowUpRight size={16} /></button></article></div></section>
-    <section className="projects-section section-wrap"><div className="projects-heading"><div><p className="eyebrow">The project shelf</p><h2>Good work, <em>in progress.</em></h2></div><p className="projects-intro">Browse the practical, beautiful things churches are building together.</p></div><div className="project-toolbar"><div className="filter-tabs" role="tablist" aria-label="Project categories">{categories.map((category) => <button key={category} className={activeCategory === category ? "filter-tab active" : "filter-tab"} onClick={() => onCategoryChange(category)} role="tab" aria-selected={activeCategory === category}>{category}</button>)}</div><label className="search-field"><Search size={16} /><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search projects" aria-label="Search projects" />{query && <button className="clear-search" onClick={() => onQueryChange("")} aria-label="Clear search"><X size={14} /></button>}</label></div><div className="project-grid">{visibleProjects.map((project, index) => <ProjectCard key={project.id} project={project} index={index} onDetails={() => onProject(project)} onDonate={() => onDonate(project)} />)}</div>{visibleProjects.length === 0 && <div className="empty-state"><Sparkles size={20} /><h3>No projects found</h3><p>Try another search or category.</p></div>}</section>
-    <section className="promise-section section-wrap" id="how-it-works"><div className="promise-number">02</div><div><p className="eyebrow">The SoundFaith promise</p><h2>More than a transaction.<br /><em>A shared signal.</em></h2></div><p className="promise-copy">Your gift is a vote for the places that hold us. We make the path from intention to impact clear, accountable, and full of heart.</p><a className="text-link" href="#/churches">Our approach <span>↗</span></a></section>
-  </main>;
+  // Show only 3-4 featured projects to reduce cognitive load
+  const featuredProjects = projects.slice(0, 3);
+  
+  if (projects.length === 0) {
+    return (
+      <main className="empty-state section-wrap">
+        <Sparkles size={20} />
+        <h3>No projects available</h3>
+        <p>Check back soon for new church projects.</p>
+      </main>
+    );
+  }
+
+  return (
+    <main id="top">
+      {/* Hero: Single value statement + single primary CTA */}
+      <section className="hero section-wrap">
+        <div className="hero-copy reveal reveal-one">
+          <p className="eyebrow"><span className="eyebrow-dot" /> For churches, by communities</p>
+          <h1>Give directly to your<br /><em>church's mission.</em></h1>
+          <p className="hero-description">Transparent, blockchain-powered giving. Every dollar to your church's project. No middleman.</p>
+          <div className="hero-actions">
+            <a className="button button-coral" href="#/all-projects">Give now <ArrowUpRight size={16} /></a>
+          </div>
+        </div>
+        <div className="hero-aside reveal reveal-two">
+          <div className="trust-cards">
+            <div className="trust-card">
+              <Shield size={24} />
+              <span>Every dollar reaches your church's work</span>
+            </div>
+            <div className="trust-card">
+              <Link2 size={24} />
+              <span>Verified by local church leaders</span>
+            </div>
+            <div className="trust-card">
+              <Lock size={24} />
+              <span>Permanent blockchain record</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Featured projects: 3 cards in responsive grid */}
+      <section className="featured-projects section-wrap" id="featured">
+        <div className="featured-header">
+          <div>
+            <p className="eyebrow">Featured now</p>
+            <h2>Where faith<br /><em>is building.</em></h2>
+          </div>
+        </div>
+        
+        <div className="featured-grid">
+          {featuredProjects.map((project, index) => (
+            <article key={project.id} className="featured-card" style={{ animationDelay: `${index * 100}ms` }}>
+              <ProjectVisual project={project} />
+              <div className="card-body">
+                <div className="card-meta">
+                  <span className="category-label">{project.category}</span>
+                  <span>{project.location}</span>
+                </div>
+                <p className="card-church">{project.church}</p>
+                <h3>{project.title}</h3>
+                <p className="card-description">{project.description}</p>
+                <div className="card-funding">
+                  <div className="card-funding-copy">
+                    <strong>{formatMoney(project.raised)}</strong>
+                    <span>of {formatMoney(project.goal)}</span>
+                  </div>
+                  <Progress project={project} />
+                </div>
+                <div className="card-footer">
+                  <button className="button button-coral button-small" onClick={() => onDonate(project)}>
+                    Give now <ArrowUpRight size={14} />
+                  </button>
+                  <button className="text-link" onClick={() => onProject(project)}>
+                    Learn more
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {projects.length > 3 && (
+          <div className="featured-footer">
+            <a className="button button-outline" href="#/all-projects">
+              Browse all {projects.length} projects <ArrowUpRight size={16} />
+            </a>
+          </div>
+        )}
+      </section>
+
+      {/* How it works: Modern card-based with icons and animations */}
+      <section className="how-it-works section-wrap" id="how-it-works">
+        <div className="how-header">
+          <div>
+            <p className="eyebrow">Simple process</p>
+            <h2>How it <em>works.</em></h2>
+          </div>
+        </div>
+        
+        <div className="how-grid">
+          {/* For donors */}
+          <div className="how-section">
+            <p className="section-label">For donors</p>
+            <div className="how-cards">
+              <div className="how-card reveal" style={{ animationDelay: '0s' }}>
+                <div className="how-icon">
+                  <Smartphone size={28} />
+                </div>
+                <strong>Browse & choose</strong>
+                <p>See active church projects verified by local teams.</p>
+              </div>
+              <div className="how-card reveal" style={{ animationDelay: '0.1s' }}>
+                <div className="how-icon">
+                  <Wallet size={28} />
+                </div>
+                <strong>Give from your wallet</strong>
+                <p>Donations confirm on TX blockchain instantly.</p>
+              </div>
+              <div className="how-card reveal" style={{ animationDelay: '0.2s' }}>
+                <div className="how-icon">
+                  <TrendingUp size={28} />
+                </div>
+                <strong>Watch impact unfold</strong>
+                <p>Track progress as your project reaches its goal.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* For church owners */}
+          <div className="how-section">
+            <p className="section-label">For churches</p>
+            <div className="how-cards">
+              <div className="how-card reveal" style={{ animationDelay: '0.05s' }}>
+                <div className="how-icon">
+                  <Zap size={28} />
+                </div>
+                <strong>Create your project</strong>
+                <p>Share your vision. Set a goal. Add inspiring photos.</p>
+              </div>
+              <div className="how-card reveal" style={{ animationDelay: '0.15s' }}>
+                <div className="how-icon">
+                  <Link2 size={28} />
+                </div>
+                <strong>Share & receive</strong>
+                <p>Donations flow in transparently on-chain.</p>
+              </div>
+              <div className="how-card reveal" style={{ animationDelay: '0.25s' }}>
+                <div className="how-icon">
+                  <TrendingUp size={28} />
+                </div>
+                <strong>Claim & build</strong>
+                <p>At goal, claim funds and start your work.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Why blockchain CTA section */}
+      <section className="why-blockchain section-wrap" id="why-blockchain">
+        <div className="blockchain-box">
+          <div className="blockchain-content">
+            <p className="eyebrow">Powered by TX blockchain</p>
+            <h2>Why transparency<br /><em>matters for giving.</em></h2>
+            <p>Every donation is permanently recorded. No lost receipts. No hidden fees. Complete transparency means complete trust.</p>
+            <div className="blockchain-features">
+              <div className="feature-item">
+                <div className="feature-icon">✓</div>
+                <span>All transactions are public and immutable</span>
+              </div>
+              <div className="feature-item">
+                <div className="feature-icon">✓</div>
+                <span>Instant, irreversible confirmations</span>
+              </div>
+              <div className="feature-item">
+                <div className="feature-icon">✓</div>
+                <span>Direct from donor to project—no intermediary</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA for church owners */}
+      <section className="cta-section section-wrap" id="for-churches">
+        <div className="cta-box">
+          <h2>Ready to share your<br /><em>church's mission?</em></h2>
+          <p>SoundFaith gives churches the tools to fund and manage meaningful projects with their communities.</p>
+          <a className="button button-coral" href="#/churches">
+            Create a project <ArrowUpRight size={16} />
+          </a>
+        </div>
+      </section>
+    </main>
+  );
 }

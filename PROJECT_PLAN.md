@@ -1,6 +1,6 @@
 # SoundFaith delivery plan
 
-> Current state: Coreum testnet vault and Supabase-backed MVP workflows are implemented. See [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) for deployment operations and [BLOCKCHAIN_ARCHITECTURE.md](BLOCKCHAIN_ARCHITECTURE.md) for custody behavior.
+> Current state: TX testnet vault and Supabase-backed MVP workflows are implemented. See [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) for deployment operations and [BLOCKCHAIN_ARCHITECTURE.md](BLOCKCHAIN_ARCHITECTURE.md) for custody behavior.
 
 ## Phase 1: Product foundation (complete)
 
@@ -8,7 +8,7 @@
 - Light/dark theme with persisted preference
 - Search, category filtering, mobile navigation
 - Donation and social sign-in interaction shells
-- Coreum and Supabase adapter boundaries
+- TX and Supabase adapter boundaries
 - Network-native TX donation model (`utestcore` testnet, `ucore` mainnet)
 
 ## Phase 2: Supabase and identity
