@@ -241,6 +241,10 @@ export const identityRepository = {
     provider: Identity["provider"],
     email?: string,
   ): Promise<Identity> {
+    if (!supabase && (provider === "google" || provider === "apple")) {
+      throw new Error("Social sign-in is not configured for this deployment. Add the VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables in Vercel, then redeploy.");
+    }
+
     if (!supabase)
       return {
         id: "local-visitor",
