@@ -34,10 +34,12 @@ export function ModalLayer({
   modal,
   close,
   onDonate,
+  ownerEmail,
 }: {
   modal: Modal;
   close: () => void;
   onDonate: (project: Project) => void;
+  ownerEmail?: string | null;
 }) {
   const [amount, setAmount] = useState(50);
   const [customAmount, setCustomAmount] = useState("50");
@@ -229,7 +231,7 @@ export function ModalLayer({
     try {
       if (walletPassword !== walletPasswordConfirmation)
         throw new Error("Wallet passwords do not match.");
-      const { address } = await createBrowserWallet(walletPassword);
+      const { address } = await createBrowserWallet(walletPassword, "Coreum wallet", ownerEmail ?? undefined);
       await identityRepository.syncProfile(address);
       setProfile((current) => ({
         ...(current ?? {}),
@@ -253,6 +255,8 @@ export function ModalLayer({
       const { address } = await importBrowserWallet(
         file,
         rememberedWalletAddress,
+        undefined,
+        ownerEmail ?? undefined,
       );
       await identityRepository.syncProfile(address);
       setProfile((current) => ({
@@ -274,6 +278,8 @@ export function ModalLayer({
         mnemonic,
         walletPassword,
         rememberedWalletAddress,
+        "Recovered wallet",
+        ownerEmail ?? undefined,
       );
       await identityRepository.syncProfile(address);
       setProfile((current) => ({
@@ -293,6 +299,8 @@ export function ModalLayer({
   const signOut = async () => {
     await identityRepository.signOut();
     close();
+    window.location.hash = "#/";
+    window.scrollTo(0, 0);
   };
   const isWalletSetupModal = modal.type === "wallet-setup";
   useEffect(() => {

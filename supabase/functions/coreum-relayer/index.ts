@@ -48,6 +48,17 @@ Deno.serve(async (request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    const heartbeat = async (input: { success?: boolean; error?: string; projectId?: string; transactionHash?: string } = {}) => {
+      await supabase.rpc("relayer_heartbeat_update", {
+        next_seen_at: new Date().toISOString(),
+        next_success_at: input.success ? new Date().toISOString() : null,
+        next_error: input.error ?? null,
+        next_project_id: input.projectId ?? null,
+        next_transaction_hash: input.transactionHash ?? null,
+      });
+    };
+    await heartbeat();
+
     const { data: projects, error: projectError } = await supabase
       .from("projects")
       .select("id, goal_tx, owner_wallet_address")
@@ -83,9 +94,12 @@ Deno.serve(async (request) => {
           target_project_id: project.id,
         });
         if (activateError) throw activateError;
+        await heartbeat({ success: true, projectId: project.id, transactionHash: result.transactionHash });
         results.push({ id: project.id, status: "active", txHash: result.transactionHash });
       } catch (error) {
-        results.push({ id: project.id, status: "failed", error: error instanceof Error ? error.message : String(error) });
+        const message = error instanceof Error ? error.message : String(error);
+        await heartbeat({ error: message, projectId: project.id });
+        results.push({ id: project.id, status: "failed", error: message });
       }
     }
 

@@ -20,6 +20,7 @@
     "coreum:indexer:install": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-indexer-task.ps1",
     "coreum:indexer:uninstall": "powershell -ExecutionPolicy Bypass -File .\\scripts\\uninstall-indexer-task.ps1",
     "coreum:relayer": "tsx scripts/coreum-relayer.ts",
+    "coreum:relayer:local": "tsx scripts/invoke-coreum-relayer.ts",
     "coreum:relayer:credential": "powershell -ExecutionPolicy Bypass -File .\\scripts\\relayer-from-windows-credential.ps1",
     "coreum:relayer:install": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-relayer-task.ps1",
     "coreum:relayer:uninstall": "powershell -ExecutionPolicy Bypass -File .\\scripts\\uninstall-relayer-task.ps1"

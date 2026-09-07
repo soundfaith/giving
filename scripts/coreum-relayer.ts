@@ -28,6 +28,17 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSess
 
 type PendingProject = { id: string; goal_tx: number; owner_wallet_address: string | null }
 
+async function updateHeartbeat(input: { success?: boolean; error?: string; projectId?: string; transactionHash?: string } = {}) {
+  const { error } = await supabase.rpc('relayer_heartbeat_update', {
+    next_seen_at: new Date().toISOString(),
+    next_success_at: input.success ? new Date().toISOString() : null,
+    next_error: input.error ?? null,
+    next_project_id: input.projectId ?? null,
+    next_transaction_hash: input.transactionHash ?? null,
+  })
+  if (error) console.error('Relayer heartbeat update failed:', error.message)
+}
+
 async function registerProject(project: PendingProject) {
   if (!project.owner_wallet_address) {
     console.error(`Skipping ${project.id}: owner wallet is missing`)
@@ -52,6 +63,8 @@ async function registerProject(project: PendingProject) {
     'SoundFaith relayer registration',
   )
 
+  await updateHeartbeat({ success: true, projectId: project.id, transactionHash: result.transactionHash })
+
   const { error } = await supabase.rpc('relayer_activate_project', { target_project_id: project.id })
   if (error) throw error
   console.log(`Registered ${project.id} on ${chainId}: ${result.transactionHash}`)
@@ -69,6 +82,8 @@ async function relayPendingProjects() {
     try {
       await registerProject(project)
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      await updateHeartbeat({ error: message, projectId: project.id })
       console.error(`Registration failed for ${project.id}:`, error)
     }
   }
@@ -76,14 +91,17 @@ async function relayPendingProjects() {
 
 console.log(`SoundFaith Coreum relayer running as ${account.address}`)
 if (runOnce) {
+  await updateHeartbeat()
   await relayPendingProjects()
   process.exit(0)
 }
 
 while (true) {
   try {
+    await updateHeartbeat()
     await relayPendingProjects()
   } catch (error) {
+    await updateHeartbeat({ error: error instanceof Error ? error.message : String(error) })
     console.error(error)
   }
   await new Promise((resolve) => setTimeout(resolve, pollMs))

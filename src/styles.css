@@ -143,6 +143,10 @@ a { color:inherit; text-decoration:none; }
 .profile-dialog-textarea { min-height:100px; padding:12px 13px; resize:vertical; }
 .profile-dialog-input:focus, .profile-dialog-textarea:focus { border-color:var(--coral); }
 .wallet-option-list { display:grid; gap:8px; margin-top:20px; }
+.wallet-option-row { display:grid; grid-template-columns:minmax(0, 1fr) 34px; gap:8px; align-items:stretch; }
+.wallet-option-row.active .wallet-option { border-color:var(--coral); background:var(--sage); }
+.wallet-remove-button { display:grid; place-items:center; border:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer; }
+.wallet-remove-button:hover { border-color:var(--coral); color:var(--coral); }
 .profile-dialog-mnemonic { margin-top:20px; }
 .profile-dialog-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-top:14px; }
 .dialog-divider { display:flex; align-items:center; gap:10px; margin:25px 0 4px; color:var(--muted); font-size:9px; text-transform:uppercase; letter-spacing:.1em; }
@@ -220,6 +224,7 @@ a { color:inherit; text-decoration:none; }
 .admin-row-actions { display:flex; align-items:center; gap:10px; }.admin-status { font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); }.admin-status.active { color:#4e7550; }.admin-status.review { color:var(--coral); }
 .threshold-controls { display:flex; align-items:end; gap:12px; margin:15px 0 12px; }.threshold-controls label { display:grid; gap:5px; color:var(--muted); font-size:9px; text-transform:uppercase; }.threshold-controls input { width:75px; border:1px solid var(--line); background:transparent; color:var(--ink); padding:9px; font-size:10px; }.threshold-controls > span { color:var(--muted); font-size:9px; padding-bottom:10px; }.admin-project-actions { display:flex; gap:8px; }
 .admin-message { margin-top:20px; }
+.admin-relayer-copy { color:var(--muted); font-size:11px; line-height:1.7; margin:0; }
 .admin-registration { display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:14px 0; }
 .admin-registration input { min-height:42px; border:1px solid var(--line); background:transparent; color:var(--ink); padding:0 13px; font-size:10px; }
 @media (max-width: 760px) { .admin-page { padding:50px 0 75px; }.admin-heading h1 { font-size:44px; }.threshold-controls { align-items:flex-start; flex-wrap:wrap; }.threshold-controls > span { flex-basis:100%; } }

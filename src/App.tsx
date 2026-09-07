@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   Compass,
@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { Brand } from "./components/Brand";
+import { getAdminStatus } from "./lib/admin";
 import { ModalLayer, type Modal } from "./components/ModalLayer";
 import { HomePage } from "./pages/HomePage";
 import { AllProjectsPage } from "./pages/AllProjectsPage";
@@ -29,6 +30,7 @@ import {
 } from "./lib/supabase";
 import {
   activateBrowserWalletForAddress,
+  claimBrowserWalletForEmail,
   clearActiveBrowserWallet,
 } from "./lib/walletVault";
 
@@ -49,9 +51,29 @@ function readRoute() {
 export default function App() {
   const [route, setRoute] = useState(readRoute);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const mobileMenuRef = useRef<HTMLElement | null>(null);
   const [modal, setModal] = useState<Modal | null>(null);
   const [projectList, setProjectList] = useState<Project[]>(fallbackProjects);
   const [authUser, setAuthUser] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!authUser) {
+      setIsAdmin(false);
+      return;
+    }
+    getAdminStatus().then(setIsAdmin).catch(() => setIsAdmin(false));
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!mobileMenu) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!mobileMenuRef.current?.contains(target)) setMobileMenu(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [mobileMenu]);
 
   useEffect(() => {
     const changeRoute = () => {
@@ -106,6 +128,9 @@ export default function App() {
       const localWallet = walletAddress
         ? await activateBrowserWalletForAddress(walletAddress)
         : null;
+      if (localWallet && profile?.email) {
+        await claimBrowserWalletForEmail(localWallet.address, profile.email);
+      }
       if (!localWallet) {
         clearActiveBrowserWallet();
       } else {
@@ -186,6 +211,7 @@ export default function App() {
       <header className="site-header">
         <Brand />
         <nav
+          ref={mobileMenuRef}
           className={mobileMenu ? "main-nav nav-open" : "main-nav"}
           aria-label="Primary navigation"
         >
@@ -204,6 +230,7 @@ export default function App() {
           <a href="#/churches" onClick={() => setMobileMenu(false)}>
             For churches
           </a>
+          {isAdmin && <a href="#/admin" onClick={() => setMobileMenu(false)}>Admin</a>}
         </nav>
         <a
           className="button button-dark header-wallet"
@@ -283,6 +310,7 @@ export default function App() {
           modal={modal}
           close={() => setModal(null)}
           onDonate={openDonate}
+          ownerEmail={authUser}
         />
       )}
     </div>

@@ -107,29 +107,35 @@ The migration sequence currently includes:
 
 Do not run migration 011 casually. It deletes Supabase projects, profiles, donations, comments, notifications, reviewer data, auth users other than the preserved admin, and project image records. It does not delete Coreum contract state or on-chain funds. Supabase Storage objects must be removed separately through the Dashboard or Storage API because direct SQL deletion from `storage.objects` is blocked.
 
-## Running the private relayer
+## Running the relayer
 
 The admin page only bypasses the reviewer decision. It changes a project from `review` to `approved_pending_chain`. The relayer below is the only application process that signs `register_project` with the contract-owner wallet. After the transaction succeeds, it calls the service-role activation RPC, which changes the project to `active`.
 
-Run it in a private worker environment with `COREUM_MNEMONIC`, `COREUM_DONATION_CONTRACT`, `VITE_SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` configured, plus the optional Coreum connection variables described in the scripts:
+The relayer is a Supabase Edge Function. Vercel invokes it every minute through `/api/relayer`. Configure these Vercel environment variables: `SUPABASE_URL`, `RELAYER_CRON_SECRET`, and `CRON_SECRET`. The first must point to the linked Supabase project; the two secrets must match the Supabase function configuration and Vercel cron protection respectively.
+
+For local development, start the function locally and invoke it with:
+
+```powershell
+supabase functions serve coreum-relayer --no-verify-jwt
+$env:RELAYER_CRON_SECRET = '<local-relayer-secret>'
+npm run coreum:relayer:local
+```
+
+For a one-time queue drain against the deployed function, set `COREUM_RELAYER_URL` to the Supabase function URL and run the same command. The function checks every `approved_pending_chain` project each time it is invoked.
+
+The legacy Windows worker can still be run manually in a private environment with `COREUM_MNEMONIC`, `COREUM_DONATION_CONTRACT`, `VITE_SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`, plus the optional Coreum connection variables described in the scripts:
 
 ```powershell
 npm run coreum:relayer:credential
 ```
 
-On the Windows deployment machine, install it as a per-user Scheduled Task so it starts at logon and restarts after a failure:
+Do not install the legacy worker as a Windows Scheduled Task. Vercel is now the scheduler:
 
 ```powershell
-npm run coreum:relayer:install
+vercel deploy --prod
 ```
 
-The task is named `SoundFaith Coreum Relayer`. It runs under the Windows user that installed it, which gives it access to that user's Windows Credential Manager entry and Supabase CLI login. It polls every 10 seconds, so no manual trigger is needed after an admin approval. To remove the task:
-
-```powershell
-npm run coreum:relayer:uninstall
-```
-
-For a one-time queue drain or deployment check, add `-Once` to the wrapper command. The wrapper retrieves the Supabase `service_role` key through the authenticated Supabase CLI and the contract-owner mnemonic from Windows Credential Manager, then removes both from the process environment when it exits.
+The Vercel cron invokes the Supabase Edge Function once per minute. The function retrieves the contract-owner mnemonic and service-role key from Supabase secrets and removes no credentials from the browser.
 
 The relayer uses each project's `owner_wallet_address` as the on-chain beneficiary. It never signs with or replaces that wallet, and it does not expose the contract-owner mnemonic to the browser.
 

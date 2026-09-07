@@ -74,6 +74,15 @@ export async function connectCoreumWallet(): Promise<WalletSession> {
 export async function donateWithWallet(projectId: string, amountTx: number, password?: string) {
   if (!contractAddress)
     throw new Error("VITE_COREUM_DONATION_CONTRACT is not configured");
+  let onChainProject: OnChainProject;
+  try {
+    onChainProject = await getProjectOnChain(projectId);
+  } catch {
+    throw new Error("This project is not registered on-chain yet. Please try again after the project has been approved and registered.");
+  }
+  if (onChainProject.status !== "active") {
+    throw new Error(`This project is not accepting donations on-chain (status: ${onChainProject.status}).`);
+  }
   const { address, client } = password
     ? await connectBrowserWallet(password)
     : await connectCoreumWallet();
