@@ -8,8 +8,10 @@ export type ReviewQueueItem = {
   description: string;
   category: string;
   goal_tx: number;
-  review_rounds: { required_reviews: number; status: string }[];
-  project_reviews: { decision: string; reviewer_id: string; note: string | null }[];
+  required_attestations: number;
+  required_weighted_score: number;
+  attestation_status: string;
+  project_attestations: { decision: string; reviewer_wallet: string; reputation: number }[];
 };
 
 export async function applyAsReviewer(walletAddress: string, expertise: string[]) {
@@ -38,7 +40,7 @@ export async function getReviewerQueue() {
   const { data: reviewer, error: reviewerError } = await supabase.from("reviewers").select("status").eq("profile_id", user.id).maybeSingle();
   if (reviewerError) throw reviewerError;
   if (reviewer?.status !== "active") return [];
-  const { data, error } = await supabase.from("projects").select("id, title, church_name, location, description, category, goal_tx, review_rounds(required_reviews, status), project_reviews(decision, reviewer_id, note)").eq("status", "review").order("created_at", { ascending: true });
+  const { data, error } = await supabase.from("projects").select("id, title, church_name, location, description, category, goal_tx, required_attestations, required_weighted_score, attestation_status, project_attestations(decision, reviewer_wallet, reputation)").in("attestation_status", ["pending", "paused"]).order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []) as ReviewQueueItem[];
 }
@@ -47,6 +49,6 @@ export async function submitProjectReview(projectId: string, decision: "approve"
   if (!supabase) throw new Error("Supabase is not configured");
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Sign in before submitting a review");
-  const { error } = await supabase.from("project_reviews").insert({ project_id: projectId, reviewer_id: user.id, decision, note: note.trim() || null });
+  const { error } = await supabase.rpc("submit_project_attestation", { target_project_id: projectId, next_decision: decision === "approve" ? "attest" : "flag" });
   if (error) throw new Error(`Unable to submit review: ${error.message}`);
 }

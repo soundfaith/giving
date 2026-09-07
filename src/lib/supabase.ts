@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getProjectOnChain } from "./wallet";
 
-export type ProjectCategory = "Sound & AV" | "Spaces" | "Access";
+export type ProjectCategory = "Sound & AV" | "Worship & Gathering" | "Facilities & Maintenance" | "Community & Outreach" | "General Church Needs";
 
 export type Project = {
   id: string;
@@ -30,6 +30,7 @@ export type Profile = {
   email: string | null;
   wallet_address: string | null;
   handle: string | null;
+  created_at: string | null;
 };
 
 export type DonationRecord = {
@@ -343,7 +344,7 @@ export const identityRepository = {
       .from("profiles")
       .update({ handle: final, updated_at: new Date().toISOString() })
       .eq("id", user.id)
-      .select("email, wallet_address, handle")
+      .select("email, wallet_address, handle, created_at")
       .single();
     if (updateError) throw updateError;
     return updated;
@@ -380,7 +381,7 @@ export const identityRepository = {
     } = await supabase.auth.getUser();
     if (!user) throw new Error("Sign in to view your profile");
     const [{ data: profile, error: profileError }, { data: ownedProjects, error: projectsError }, { data: donorDonations, error: donorDonationsError }] = await Promise.all([
-      supabase.from("profiles").select("email, wallet_address, handle").eq("id", user.id).maybeSingle(),
+      supabase.from("profiles").select("email, wallet_address, handle, created_at").eq("id", user.id).maybeSingle(),
       supabase.from("projects").select("id, church_name, location, title, description, category, goal_tx, status, created_at").eq("submitted_by", user.id).order("created_at", { ascending: false }),
       supabase.from("donations").select("id, project_id, amount_tx, tx_hash, network, created_at, projects(title, church_name)").eq("profile_id", user.id).order("created_at", { ascending: false }),
     ]);
@@ -397,9 +398,9 @@ export const identityRepository = {
     return { profile, ownedProjects: ownedProjects ?? [], donations: [...donationsById.values()].sort((left, right) => right.created_at.localeCompare(left.created_at)) };
   },
 
-  async getNotifications(): Promise<Notification[]> {
+  async getNotifications(offset = 0, limit = 20): Promise<Notification[]> {
     if (!supabase) return [];
-    const { data, error } = await supabase.from("notifications").select("id, kind, project_id, title, message, read_at, created_at").order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("notifications").select("id, kind, project_id, title, message, read_at, created_at").order("created_at", { ascending: false }).range(offset, offset + limit - 1);
     if (error) throw error;
     return (data ?? []) as Notification[];
   },

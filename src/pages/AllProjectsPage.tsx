@@ -24,9 +24,8 @@ export function AllProjectsPage({ projects, onProject, onDonate }: {
         <div className="projects-heading">
           <div>
             <p className="eyebrow">All projects</p>
-            <h1>Browse all {projects.length} <em>active projects.</em></h1>
+            <h1>Projects<br /><em>worth building.</em></h1>
           </div>
-          <p className="projects-intro">Filter by category or search to find the project that speaks to you.</p>
         </div>
 
         <div className="project-toolbar">
@@ -65,7 +64,7 @@ export function AllProjectsPage({ projects, onProject, onDonate }: {
 
         <div className="project-grid">
           {visibleProjects.map((project, index) => (
-            <article key={project.id} className="project-card" style={{ animationDelay: `${index * 70}ms` }}>
+            <article key={project.id} className="project-card" style={{ animationDelay: `${index * 70}ms` }} onClick={() => onProject(project)}>
               <ProjectVisual project={project} />
               <div className="project-card-body">
                 <div className="card-meta">
@@ -85,10 +84,10 @@ export function AllProjectsPage({ projects, onProject, onDonate }: {
                 <div className="card-footer">
                   <span>{project.donors} donors</span>
                   <div className="card-actions">
-                    <button className="card-details" onClick={() => onProject(project)}>
+                    <button className="card-details" onClick={(event) => { event.stopPropagation(); onProject(project); }}>
                       View project
                     </button>
-                    <button className="card-donate" onClick={() => onDonate(project)}>
+                    <button className="card-donate" onClick={(event) => { event.stopPropagation(); onDonate(project); }}>
                       Donate
                     </button>
                   </div>

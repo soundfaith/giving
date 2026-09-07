@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, RefreshCw, Shield, X } from "lucide-react";
-import { getAdminData, getAdminStatus, resolveProject, setReviewerStatus, setReviewThresholds, type AdminProject, type AdminReviewer } from "../lib/admin";
+import { getAdminData, getAdminStatus, overrideAttestation, resolveProject, setReviewerStatus, setReviewThresholds, type AdminProject, type AdminReviewer } from "../lib/admin";
 
 export function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null); const [reviewers, setReviewers] = useState<AdminReviewer[]>([]); const [projects, setProjects] = useState<AdminProject[]>([]); const [message, setMessage] = useState(""); const [loading, setLoading] = useState(true);
@@ -13,6 +13,7 @@ export function AdminPage() {
     setProjects((items) => items.map((item) => item.id === project.id ? { ...item, status: nextStatus } : item));
     setMessage(status === "approve" ? "Review bypassed. The private chain relayer will register the project on TX." : "Project closed.");
   } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to resolve project"); } };
+  const overrideProject = async (project: AdminProject, status: "active" | "rejected") => { try { await overrideAttestation(project.id, status); setProjects((items) => items.map((item) => item.id === project.id ? { ...item, status } : item)); setMessage("Attestation overridden by admin."); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to override attestation"); } };
   const thresholds = async (project: AdminProject, approvals: string, rejections: string) => { try { const nextApprovals = Math.max(1, Number(approvals)); const nextRejections = Math.max(1, Number(rejections)); await setReviewThresholds(project.id, nextApprovals, nextRejections); setProjects((items) => items.map((item) => item.id === project.id ? { ...item, approval_threshold: nextApprovals, rejection_threshold: nextRejections } : item)); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to update thresholds"); } };
   if (loading) return <main className="admin-page section-wrap"><p className="profile-empty">Loading admin controls...</p></main>;
   if (!authorized) return <main className="admin-page section-wrap"><p className="eyebrow"><Shield size={13} /> MVP admin</p><h1>Access <em>denied.</em></h1><p className="hero-description">This page is protected by the configured admin wallet.</p></main>;

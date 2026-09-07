@@ -28,7 +28,7 @@ create table if not exists public.projects (
   location text not null,
   title text not null,
   description text not null,
-  category text not null check (category in ('Sound & AV', 'Spaces', 'Access')),
+  category text not null check (category in ('Sound & AV', 'Worship & Gathering', 'Facilities & Maintenance', 'Community & Outreach', 'General Church Needs')),
   goal_tx numeric not null check (goal_tx > 0),
   metadata_token_id text not null,
   image_urls text[] not null default '{}',

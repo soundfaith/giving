@@ -1,151 +1,97 @@
-import { useEffect, useState, type ChangeEvent } from "react";
-import { Copy, Download, Eye, RefreshCw, Wallet } from "lucide-react";
-import { formatMoney } from "../lib/projects";
-import { identityRepository, type DonationRecord } from "../lib/supabase";
+import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, ArrowUpRight, Check, Copy, Download, Eye, Moon, Pencil, RefreshCw, Sun, Wallet, X } from "lucide-react";
+import { getViewerRole } from "../lib/admin";
+import { identityRepository } from "../lib/supabase";
 import { getCoreumBalances } from "../lib/wallet";
-import { createBrowserWallet, exportBrowserWallet, getBrowserWalletAddress, getBrowserWallets, hasBiometricUnlock, importBrowserWallet, registerBiometricUnlock, revealBrowserWalletMnemonic, switchBrowserWallet, verifyBiometricUnlock } from "../lib/walletVault";
+import { createBrowserWallet, exportBrowserWallet, getBrowserWalletAddress, getBrowserWallets, hasBiometricUnlock, importBrowserWallet, importBrowserWalletMnemonic, importBrowserWalletPrivateKey, registerBiometricUnlock, revealBrowserWalletMnemonic, switchBrowserWallet } from "../lib/walletVault";
+
+const chainExplorerBase = import.meta.env.VITE_COREUM_NETWORK === "mainnet" ? "https://explorer.coreum.com" : "https://explorer.testnet-1.coreum.dev";
+type ProfileModal = "name" | "mnemonic" | "wallets" | "add-wallet" | null;
+type ProfileData = { email?: string | null; wallet_address?: string | null; handle?: string | null; created_at?: string | null };
+type WalletItem = { id: string; name: string; address: string };
+type Theme = "light" | "dark";
+type WalletAddMode = "choices" | "create" | "mnemonic" | "private-key" | "backup";
 
 export function ProfilePage() {
-  const [profile, setProfile] = useState<{ email?: string | null; wallet_address?: string | null; handle?: string | null } | null>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [role, setRole] = useState<"admin" | "reviewer" | null>(null);
   const [handleDraft, setHandleDraft] = useState("");
   const [balance, setBalance] = useState<number | null>(null);
   const [mnemonic, setMnemonic] = useState<string | null>(null);
   const [mnemonicRevealed, setMnemonicRevealed] = useState(false);
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [mnemonicPassword, setMnemonicPassword] = useState("");
-  const [ownedProjects, setOwnedProjects] = useState<Array<{ id: string; title: string; status: string; goal_tx: number }>>([]);
-  const [donations, setDonations] = useState<DonationRecord[]>([]);
+  const [wallets, setWallets] = useState<WalletItem[]>([]);
+  const [walletName, setWalletName] = useState("");
+  const [walletPassword, setWalletPassword] = useState("");
+  const [restoreMnemonic, setRestoreMnemonic] = useState("");
+  const [walletAddMode, setWalletAddMode] = useState<WalletAddMode>("choices");
+  const [mnemonicLength, setMnemonicLength] = useState(12);
+  const [mnemonicWords, setMnemonicWords] = useState<string[]>(Array(12).fill(""));
+  const [privateKey, setPrivateKey] = useState("");
+  const [modal, setModal] = useState<ProfileModal>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-  const [wallets, setWallets] = useState<Array<{ id: string; name: string; address: string }>>([]);
-  const [walletName, setWalletName] = useState("");
-  const [walletCreatePassword, setWalletCreatePassword] = useState("");
+  const [theme, setTheme] = useState<Theme>(() => window.localStorage.getItem("soundfaith-theme") === "dark" ? "dark" : "light");
+  const [biometric, setBiometric] = useState(hasBiometricUnlock);
+  const [mnemonicCopied, setMnemonicCopied] = useState(false);
 
   const refresh = async () => {
-    setLoading(true);
-    setMessage("");
+    setLoading(true); setMessage("");
     try {
-      const [dashboard, localAddress, localWallets] = await Promise.all([identityRepository.getDashboard(), getBrowserWalletAddress(), getBrowserWallets()]);
-      setProfile(dashboard.profile);
-      setHandleDraft(dashboard.profile?.handle ?? "");
-      setOwnedProjects(dashboard.ownedProjects);
-      setDonations(dashboard.donations);
-      setWallets(localWallets);
+      const [dashboard, localAddress, localWallets, viewerRole] = await Promise.all([identityRepository.getDashboard(), getBrowserWalletAddress(), getBrowserWallets(), getViewerRole()]);
+      setProfile(dashboard.profile); setHandleDraft(dashboard.profile?.handle ?? ""); setWallets(localWallets); setRole(viewerRole);
       const address = dashboard.profile?.wallet_address ?? localAddress;
       const balances = address ? await getCoreumBalances(address) : null;
       setBalance(balances?.native ?? null);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to load profile");
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to load profile"); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { void refresh(); }, []);
   useEffect(() => {
-    const syncBiometricState = () => setBiometricEnabled(hasBiometricUnlock());
-    syncBiometricState();
-    window.addEventListener("focus", syncBiometricState);
-    document.addEventListener("visibilitychange", syncBiometricState);
-    return () => {
-      window.removeEventListener("focus", syncBiometricState);
-      document.removeEventListener("visibilitychange", syncBiometricState);
-    };
-  }, []);
-  const revealMnemonic = async () => {
-    try {
-      if (biometricEnabled) await verifyBiometricUnlock();
-      setMnemonic(await revealBrowserWalletMnemonic(mnemonicPassword));
-      setMnemonicRevealed(false);
-      setMnemonicPassword("");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to unlock mnemonic");
-    }
-  };
-  const enableBiometric = async () => {
-    try {
-      await registerBiometricUnlock();
-      setBiometricEnabled(true);
-      setMessage("Biometric verification enabled for this device.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to enable biometric verification");
-    }
-  };
-  const copyMnemonic = async () => {
-    if (mnemonic && mnemonicRevealed) await navigator.clipboard.writeText(mnemonic);
-  };
-  const updateHandle = async () => {
-    try {
-      const updated = await identityRepository.updateProfileHandle(handleDraft);
-      setProfile((current) => ({ ...(current ?? {}), handle: updated?.handle ?? handleDraft }));
-      setHandleDraft(updated?.handle ?? handleDraft);
-      setMessage("Handle updated.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to update handle");
-    }
-  };
-  const deleteProfile = async () => {
-    try {
-      await identityRepository.deleteProfile();
-      setProfile((current) => ({ ...(current ?? {}), email: null, wallet_address: current?.wallet_address ?? null, handle: null }));
-      setMessage("Profile removed. Your linked wallet is still preserved for future sign-ins.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to delete profile");
-    }
-  };
-  const switchWallet = async (id: string) => {
-    try {
-      const next = await switchBrowserWallet(id);
-      setWallets((current) => current.map((wallet) => wallet.id === next.id ? { ...wallet, name: next.name, address: next.address } : wallet));
-      setProfile((current) => ({ ...(current ?? {}), wallet_address: next.address }));
-      await identityRepository.syncProfile(next.address);
-      const balances = await getCoreumBalances(next.address);
-      setBalance(balances.native);
-      setMessage(`Using ${next.name}.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to switch wallet");
-    }
-  };
-  const createAdditionalWallet = async () => {
-    try {
-      const created = await createBrowserWallet(walletCreatePassword, walletName);
-      setWalletName("");
-      setWalletCreatePassword("");
-      setMessage(`Created and selected ${walletName.trim() || "Coreum wallet"}.`);
-      await refresh();
-      void created;
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to create wallet");
-    }
-  };
-  const importAdditionalWallet = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      await importBrowserWallet(file, null, walletName);
-      setWalletName("");
-      setMessage("Wallet imported and selected.");
-      await refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to import wallet");
-    } finally {
-      event.target.value = "";
-    }
-  };
+    if (!modal) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [modal]);
+  const activeWallet = wallets.find((wallet) => wallet.address === profile?.wallet_address);
+  const closeModal = () => { setModal(null); setMnemonic(null); setMnemonicRevealed(false); setMnemonicPassword(""); setWalletAddMode("choices"); setMnemonicLength(12); setMnemonicWords(Array(12).fill("")); setPrivateKey(""); };
+  const updateHandle = async () => { try { const updated = await identityRepository.updateProfileHandle(handleDraft); setProfile((current) => ({ ...(current ?? {}), handle: updated?.handle ?? handleDraft })); closeModal(); setMessage("User name updated."); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to update user name"); } };
+  const revealMnemonic = async () => { try { setMnemonic(await revealBrowserWalletMnemonic(mnemonicPassword)); setMnemonicRevealed(false); setMnemonicPassword(""); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to unlock mnemonic"); } };
+  const switchWallet = async (id: string) => { try { const next = await switchBrowserWallet(id); await identityRepository.syncProfile(next.address); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to switch wallet"); } };
+  const createWallet = async () => { try { await createBrowserWallet(walletPassword, walletName); setWalletName(""); setWalletPassword(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create wallet"); } };
+  const restoreFromMnemonic = async () => { try { await importBrowserWalletMnemonic(restoreMnemonic, walletPassword, null, walletName || "Recovered wallet"); setRestoreMnemonic(""); setWalletName(""); setWalletPassword(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to restore wallet"); } };
+  const createFromMnemonic = async () => { try { await importBrowserWalletMnemonic(mnemonicWords.join(" "), walletPassword, null, walletName || "Recovered wallet"); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import mnemonic"); } };
+  const importPrivateKey = async () => { try { await importBrowserWalletPrivateKey(privateKey, walletPassword, walletName || "Imported wallet"); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import private key"); } };
+  const updateMnemonicLength = (length: number) => { setMnemonicLength(length); setMnemonicWords((current) => Array.from({ length }, (_, index) => current[index] ?? "")); };
+  const pasteMnemonic = (event: React.ClipboardEvent<HTMLInputElement>) => { const pasted = event.clipboardData.getData("text").trim().split(/\s+/).filter(Boolean); if (pasted.length > 1) { event.preventDefault(); updateMnemonicLength(pasted.length); setMnemonicWords(pasted); } };
+  const importBackup = async (event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file) return; try { await importBrowserWallet(file, null, walletName || undefined); setWalletName(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import wallet backup"); } finally { event.target.value = ""; } };
+  const copyMnemonic = async () => { if (mnemonic && mnemonicRevealed) { await navigator.clipboard.writeText(mnemonic); setMnemonicCopied(true); window.setTimeout(() => setMnemonicCopied(false), 2500); } };
+  const exportWallet = async () => { try { await exportBrowserWallet(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to export wallet"); } };
+  const toggleTheme = () => { const next = theme === "light" ? "dark" : "light"; setTheme(next); document.documentElement.dataset.theme = next; window.localStorage.setItem("soundfaith-theme", next); };
+  const enableBiometric = async () => { try { await registerBiometricUnlock(); setBiometric(true); setMessage("Biometric unlock enabled on this device."); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to enable biometric unlock"); } };
+  const signOut = async () => { try { await identityRepository.signOut(); window.location.hash = "#/"; } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to sign out"); } };
+  const deleteAccount = async () => { if (!window.confirm("Delete your SoundFaith account? This cannot be undone.")) return; try { await identityRepository.deleteProfile(); await identityRepository.signOut(); window.location.hash = "#/"; } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to delete account"); } };
 
   return <main className="profile-page section-wrap">
-    <div className="profile-page-heading"><div><p className="eyebrow">Your SoundFaith identity</p><h1>Giving with <em>intention.</em></h1></div><button className="icon-button" onClick={() => void refresh()} aria-label="Refresh profile" title="Refresh profile"><RefreshCw size={16} /></button></div>
+    <div className="profile-page-heading"><div><p className="eyebrow">Your SoundFaith identity</p><h1>Your <em>profile.</em></h1></div><button className="icon-button" onClick={() => void refresh()} aria-label="Refresh profile" title="Refresh profile"><RefreshCw size={16} /></button></div>
     {message && <p className="modal-footnote profile-message">{message}</p>}
-    <section className="profile-overview">
-      <div className="profile-overview-item"><span>Handle</span><strong>{profile?.handle ?? (loading ? "Loading..." : "Not assigned")}</strong></div>
-      <div className="profile-overview-item"><span>Email</span><strong>{profile?.email ?? (loading ? "Loading..." : "Not available")}</strong></div>
-      <div className="profile-overview-item"><span>Wallet name</span><strong>{wallets.find((wallet) => wallet.address === profile?.wallet_address)?.name ?? "Coreum wallet"}</strong></div><div className="profile-overview-item"><span>Coreum wallet</span><strong className="account-wallet-address">{profile?.wallet_address ?? "Not configured"}</strong></div><div className="profile-overview-item"><span>TX balance</span><strong>{balance === null ? (loading ? "Loading..." : "--") : `${balance.toFixed(6)} TX`}</strong></div>
-    </section>
-    <div className="profile-page-actions"><button className="button button-coral" onClick={() => void exportBrowserWallet()}><Download size={15} /> Export encrypted wallet</button><button className="button button-dark" onClick={() => void deleteProfile()}>Delete profile</button><span><Wallet size={15} /> Wallet secrets stay on your device</span></div>
-    <section className="mnemonic-section"><div><p className="eyebrow">Wallets on this device</p><h2>Choose a wallet</h2><p>Your last selected wallet is used automatically when you return on this device.</p></div><div className="wallet-switcher">{wallets.map((wallet) => <button className={wallet.address === profile?.wallet_address ? "wallet-option active" : "wallet-option"} key={wallet.id} onClick={() => void switchWallet(wallet.id)}><strong>{wallet.name}</strong><small>{wallet.address}</small></button>)}</div><div className="mnemonic-controls"><input placeholder="Wallet name" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><input type="password" placeholder="New wallet password" value={walletCreatePassword} onChange={(event) => setWalletCreatePassword(event.target.value)} /><button className="button button-dark" onClick={() => void createAdditionalWallet()} disabled={!walletCreatePassword || walletCreatePassword.length < 12}>Add wallet</button><label className="wallet-import">Import wallet backup<input type="file" accept="application/json" onChange={importAdditionalWallet} /></label></div></section>
-    <section className="mnemonic-section"><div><p className="eyebrow">Public handle</p><h2>Choose your display name</h2><p>Your handle is public and is used in project discussions. It is generated automatically when you first sign in, and you can choose your own anytime.</p></div><div className="mnemonic-controls"><input placeholder="kind-shepherd" value={handleDraft} onChange={(event) => setHandleDraft(event.target.value)} /><button className="button button-dark" onClick={() => void updateHandle()} disabled={!handleDraft.trim()} >Save handle</button></div></section>
-    <section className="mnemonic-section"><div><p className="eyebrow">Wallet recovery</p><h2>Reveal mnemonic</h2><p>Enter your wallet password to decrypt it locally. The words stay blurred until you explicitly choose to show them.</p></div><div className="mnemonic-controls"><input type="password" placeholder="Wallet password" value={mnemonicPassword} onChange={(event) => setMnemonicPassword(event.target.value)} /><button className="button button-dark" onClick={() => void revealMnemonic()} disabled={!mnemonicPassword}><Eye size={15} /> Unlock</button></div><div className="mnemonic-controls"><button className="button button-dark" onClick={() => void enableBiometric()} disabled={biometricEnabled}>{biometricEnabled ? "Biometric verification enabled" : "Enable device biometrics"}</button></div>{mnemonic && <div className="mnemonic-reveal"><div className={mnemonicRevealed ? "mnemonic-words revealed" : "mnemonic-words"}>{mnemonic.split(/\s+/).map((word, index) => <span className="mnemonic-word" key={`${word}-${index}`}><small>{index + 1}</small><b>{word}</b></span>)}</div><div className="mnemonic-reveal-actions">{!mnemonicRevealed && <button className="button button-dark" onClick={() => setMnemonicRevealed(true)}><Eye size={15} /> Show mnemonic</button>}{mnemonicRevealed && <button className="icon-button" onClick={() => void copyMnemonic()} aria-label="Copy mnemonic" title="Copy mnemonic"><Copy size={15} /></button>}<button className="button button-dark" onClick={() => { setMnemonic(null); setMnemonicRevealed(false); }}>Hide</button></div></div>}</section>
-    <section className="profile-page-section"><div className="profile-section-heading"><p className="eyebrow">Projects you own</p><span>{ownedProjects.length}</span></div>{ownedProjects.length ? <div className="profile-page-list">{ownedProjects.map((project) => <article className="profile-page-row" key={project.id}><div><h2>{project.title}</h2><span>{project.status}</span></div><strong>Goal {formatMoney(Number(project.goal_tx))}</strong></article>)}</div> : <p className="profile-empty">No submitted projects yet.</p>}</section>
-    <section className="profile-page-section"><div className="profile-section-heading"><p className="eyebrow">Donation history</p><span>{donations.length}</span></div>{donations.length ? <div className="profile-page-list">{donations.map((donation) => <article className="profile-page-row" key={donation.id}><div><h2>{donation.project?.title ?? donation.project_id}</h2><span>{new Date(donation.created_at).toLocaleDateString()} · {donation.network}</span><small>{donation.tx_hash}</small></div><strong>{formatMoney(Number(donation.amount_tx))} TX</strong></article>)}</div> : <p className="profile-empty">No indexed donations yet.</p>}</section>
+    <section className="profile-section-card profile-identity-card"><div className="profile-section-title"><div><p className="eyebrow">Account</p><h2>Login details</h2></div><button className="icon-button" onClick={() => setModal("name")} aria-label="Rename user" title="Rename user"><Pencil size={15} /></button></div><div className="profile-details-grid"><div><span>User name</span><strong>{profile?.handle ?? (loading ? "Loading..." : "Not assigned")}</strong></div>{role && <div><span>Role</span><strong><b className="role-badge">{role}</b></strong></div>}<div><span>Date joined</span><strong>{profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : loading ? "Loading..." : "Not available"}</strong></div><div><span>Email address</span><strong>{profile?.email ?? (loading ? "Loading..." : "Not available")}</strong></div></div><p className="profile-privacy-note">SoundFaith does not store personal user data. The only account information retained for social login is your email address.</p></section>
+    <section className="profile-section-card"><div className="profile-section-title"><div><p className="eyebrow">On this device</p><h2>Wallet details</h2></div><Wallet size={20} /></div><div className="profile-details-grid wallet-details-grid"><div><span>Wallet name</span><strong>{activeWallet?.name ?? "No wallet selected"}</strong></div><div><span>Address</span><strong className="account-wallet-address">{profile?.wallet_address ?? "Not configured"}</strong></div><div><span>TX balance</span><strong>{balance === null ? (loading ? "Loading..." : "--") : `${balance.toFixed(6)} TX`}</strong></div></div><div className="profile-button-row"><button className="button button-coral" onClick={() => setModal("wallets")}><Wallet size={15} /> Select wallet</button><button className="button button-dark" onClick={() => setModal("add-wallet")}><Wallet size={15} /> Add or create wallet</button><button className="button button-outline" onClick={() => void exportWallet()}><Download size={15} /> Export wallet</button><button className="button button-outline" onClick={() => setModal("mnemonic")}><Eye size={15} /> Show mnemonic</button></div><p className="profile-device-note">Wallet keys stay encrypted on this device. SoundFaith never receives your password or recovery phrase.</p></section>
+    <section className="profile-section-card profile-settings-card"><div className="profile-section-title"><div><p className="eyebrow">Preferences & security</p><h2>Account settings</h2></div></div><div className="profile-settings-list"><button className="profile-setting" onClick={toggleTheme}><span><strong>Theme</strong><small>Choose how SoundFaith looks</small></span>{theme === "light" ? <Moon size={17} /> : <Sun size={17} />}</button><button className="profile-setting" onClick={() => void enableBiometric()}><span><strong>Biometric unlock</strong><small>{biometric ? "Enabled on this device" : "Use your device biometrics"}</small></span><span className={biometric ? "setting-status enabled" : "setting-status"}>{biometric ? "On" : "Off"}</span></button></div><div className="profile-account-actions"><button className="button button-outline" onClick={() => void signOut()}>Log out</button><button className="button button-danger" onClick={() => void deleteAccount()}>Delete account</button></div></section>
+    {modal === "name" && <ProfileDialog title="Rename user" close={closeModal}><input className="profile-dialog-input" value={handleDraft} onChange={(event) => setHandleDraft(event.target.value)} placeholder="Your user name" /><button className="button button-coral modal-action" onClick={() => void updateHandle()} disabled={!handleDraft.trim()}>Save user name <ArrowUpRight size={15} /></button></ProfileDialog>}
+    {modal === "mnemonic" && <ProfileDialog title="Show mnemonic" close={closeModal}><p className="modal-copy">Enter your wallet password. Your recovery phrase is decrypted locally and starts blurred.</p>{!mnemonic ? <><input className="profile-dialog-input" type="password" placeholder="Wallet password (12+ characters)" value={mnemonicPassword} onChange={(event) => setMnemonicPassword(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void revealMnemonic()} disabled={!mnemonicPassword}>Unlock mnemonic <Eye size={15} /></button></> : <><div className={mnemonicRevealed ? "mnemonic-words revealed profile-dialog-mnemonic" : "mnemonic-words profile-dialog-mnemonic"}>{mnemonic.split(/\s+/).map((word, index) => <span className="mnemonic-word" key={`${word}-${index}`}><small>{index + 1}</small><b>{word}</b></span>)}</div><div className="profile-dialog-actions">{!mnemonicRevealed ? <button className="button button-dark" onClick={() => setMnemonicRevealed(true)}><Eye size={15} /> Show words</button> : <button className="icon-button" onClick={() => void copyMnemonic()} aria-label="Copy mnemonic" title="Copy mnemonic">{mnemonicCopied ? <Check size={15} /> : <Copy size={15} />}</button>}<button className="button button-outline" onClick={closeModal}>Done</button></div></>}</ProfileDialog>}
+    {modal === "wallets" && <ProfileDialog title="Select wallet" close={closeModal}><div className="wallet-option-list">{wallets.map((wallet) => <button className={wallet.address === profile?.wallet_address ? "wallet-option active" : "wallet-option"} key={wallet.id} onClick={() => void switchWallet(wallet.id)}><strong>{wallet.name}</strong><small>{wallet.address}</small></button>)}</div>{!wallets.length && <p className="profile-empty">No wallets on this device.</p>}<button className="button button-dark modal-action" onClick={() => { closeModal(); setModal("add-wallet"); }}>Add another wallet <Wallet size={15} /></button></ProfileDialog>}
+    {modal === "add-wallet" && <ProfileDialog className={`wallet-add-dialog ${walletAddMode === "mnemonic" ? "wallet-mnemonic-dialog" : ""}`} title={walletAddMode === "choices" ? "Add or create wallet" : walletAddMode === "create" ? "Create new wallet" : walletAddMode === "mnemonic" ? "Import mnemonic" : walletAddMode === "private-key" ? "Import private key" : "Upload encrypted backup"} close={closeModal}><div className="wallet-flow">
+      {walletAddMode === "choices" && <><p className="modal-copy">Choose how you want to add a TX blockchain wallet to this device.</p><div className="wallet-flow-choices"><button className="button button-coral" onClick={() => setWalletAddMode("create")}><Wallet size={15} /> Create new wallet</button><button className="button button-dark" onClick={() => setWalletAddMode("mnemonic")}>Import using mnemonic</button><button className="button button-dark" onClick={() => setWalletAddMode("private-key")}>Import using private key</button><button className="button button-outline" onClick={() => setWalletAddMode("backup")}>Upload encrypted backup</button></div></>}
+      {walletAddMode === "create" && <><p className="modal-copy">A TX blockchain wallet will be created for you. The wallet and recovery phrase are saved only on this device. SoundFaith never receives them. Back up your mnemonic, keep it private, and never share it with anyone.</p><input className="profile-dialog-input" placeholder="Wallet name" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><input className="profile-dialog-input" type="password" placeholder="Wallet password (12+ characters)" value={walletPassword} onChange={(event) => setWalletPassword(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void createWallet()} disabled={walletPassword.length < 12}>Create wallet <Wallet size={15} /></button></>}
+      {walletAddMode === "mnemonic" && <><div className="wallet-field-label">Number of words<div className="mnemonic-length-pills">{[12, 15, 18, 21, 24].map((length) => <button type="button" key={length} className={mnemonicLength === length ? "mnemonic-length-pill active" : "mnemonic-length-pill"} onClick={() => updateMnemonicLength(length)}>{length}</button>)}</div></div><div className="mnemonic-input-grid">{mnemonicWords.map((word, index) => <input className="profile-dialog-input" key={index} value={word} onPaste={index === 0 ? pasteMnemonic : undefined} onChange={(event) => setMnemonicWords((current) => current.map((entry, wordIndex) => wordIndex === index ? event.target.value : entry))} placeholder={`${index + 1}`} aria-label={`Mnemonic word ${index + 1}`} />)}</div><input className="profile-dialog-input" placeholder="Wallet name (optional)" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><input className="profile-dialog-input" type="password" placeholder="New wallet password (12+ characters)" value={walletPassword} onChange={(event) => setWalletPassword(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void createFromMnemonic()} disabled={mnemonicWords.some((word) => !word.trim()) || walletPassword.length < 12}>Import mnemonic <ArrowUpRight size={15} /></button></>}
+      {walletAddMode === "private-key" && <><p className="modal-copy">Your private key is encrypted with the new wallet password and saved only on this device. Never share it with anyone.</p><input className="profile-dialog-textarea" value={privateKey} onChange={(event) => setPrivateKey(event.target.value)} placeholder="64-character hexadecimal private key" /><input className="profile-dialog-input" placeholder="Wallet name (optional)" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><input className="profile-dialog-input" type="password" placeholder="New wallet password (12+ characters)" value={walletPassword} onChange={(event) => setWalletPassword(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void importPrivateKey()} disabled={!privateKey.trim() || walletPassword.length < 12}>Import private key <ArrowUpRight size={15} /></button></>}
+      {walletAddMode === "backup" && <><p className="modal-copy">Upload the encrypted wallet backup you imported before. You do not need to enter the wallet password here. The password is required later to unlock and sign with the wallet.</p><label className="wallet-upload-card"><Download size={20} /><strong>Choose encrypted backup</strong><span>Upload a SoundFaith wallet file from this device.</span><input type="file" accept="application/json" onChange={importBackup} /></label></>}
+      {walletAddMode !== "choices" && <button className="wallet-flow-back" onClick={() => setWalletAddMode("choices")}><ArrowLeft size={15} /> Back to wallet options</button>}
+    </div></ProfileDialog>}
   </main>;
 }
+
+function ProfileDialog({ title, close, children, className = "" }: { title: string; close: () => void; children: ReactNode; className?: string }) { return createPortal(<div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><section className={`modal profile-dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title"><button className="modal-close" onClick={close} aria-label="Close dialog"><X size={18} /></button><h2 id="profile-dialog-title">{title}</h2>{children}</section></div>, document.body); }

@@ -6,7 +6,7 @@ export type ChurchProjectDraft = {
   churchName: string;
   location: string;
   description: string;
-  category: "Sound & AV" | "Spaces" | "Access";
+  category: "Sound & AV" | "Worship & Gathering" | "Facilities & Maintenance" | "Community & Outreach" | "General Church Needs";
   goalTx: number;
   ownerWalletAddress: string;
   metadataTokenId?: string;

@@ -1,5 +1,6 @@
 import { stringToPath } from "@cosmjs/crypto";
-import { DirectSecp256k1HdWallet } from "@cosmjs/proto-signing";
+import { fromHex } from "@cosmjs/encoding";
+import { DirectSecp256k1HdWallet, DirectSecp256k1Wallet } from "@cosmjs/proto-signing";
 
 const databaseName = "soundfaith-wallet";
 const storeName = "vaults";
@@ -16,6 +17,33 @@ type StoredVault = {
   serialization: string;
   createdAt: string;
 };
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string) {
+  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+}
+
+async function encryptPrivateKey(privateKey: Uint8Array, password: string) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: salt as unknown as BufferSource, iterations: 120000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, key, privateKey as unknown as BufferSource);
+  return `private-v1:${JSON.stringify({ salt: bytesToBase64(salt), iv: bytesToBase64(iv), data: bytesToBase64(new Uint8Array(encrypted)) })}`;
+}
+
+async function decryptPrivateKey(serialization: string, password: string) {
+  const parsed = JSON.parse(serialization.slice("private-v1:".length)) as { salt: string; iv: string; data: string };
+  const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: base64ToBytes(parsed.salt) as unknown as BufferSource, iterations: 120000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: base64ToBytes(parsed.iv) as unknown as BufferSource }, key, base64ToBytes(parsed.data) as unknown as BufferSource);
+  return new Uint8Array(decrypted);
+}
 
 function openVaultDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -115,12 +143,17 @@ export async function createBrowserWallet(password: string, name = "Coreum walle
 export async function unlockBrowserWallet(password: string) {
   const vault = await readVault();
   if (!vault) throw new Error("No local wallet is configured on this device.");
+  if (vault.serialization.startsWith("private-v1:")) {
+    const wallet = await DirectSecp256k1Wallet.fromKey(await decryptPrivateKey(vault.serialization, password), prefix);
+    return { wallet, address: vault.address };
+  }
   const wallet = await DirectSecp256k1HdWallet.deserialize(vault.serialization, password);
   return { wallet, address: vault.address };
 }
 
 export async function revealBrowserWalletMnemonic(password: string) {
   const { wallet } = await unlockBrowserWallet(password);
+  if (!("mnemonic" in wallet)) throw new Error("This imported private-key wallet does not have a recovery mnemonic.");
   return wallet.mnemonic;
 }
 
@@ -196,6 +229,19 @@ export async function importBrowserWalletMnemonic(mnemonic: string, password: st
   const serialization = await wallet.serialize(password);
   const id = `wallet-${crypto.randomUUID()}`;
   await writeVault({ id, name: name.trim() || "Recovered wallet", address, serialization, createdAt: new Date().toISOString() });
+  setActiveWallet(id);
+  return { id, address };
+}
+
+export async function importBrowserWalletPrivateKey(privateKey: string, password: string, name = "Imported wallet") {
+  if (password.length < 12) throw new Error("Use a wallet password with at least 12 characters.");
+  const normalized = privateKey.trim().replace(/^0x/i, "");
+  if (!/^[0-9a-f]{64}$/i.test(normalized)) throw new Error("Enter a 32-byte private key as 64 hexadecimal characters.");
+  const wallet = await DirectSecp256k1Wallet.fromKey(fromHex(normalized), prefix);
+  const [{ address }] = await wallet.getAccounts();
+  const serialization = await encryptPrivateKey(fromHex(normalized), password);
+  const id = `wallet-${crypto.randomUUID()}`;
+  await writeVault({ id, name: name.trim() || "Imported wallet", address, serialization, createdAt: new Date().toISOString() });
   setActiveWallet(id);
   return { id, address };
 }

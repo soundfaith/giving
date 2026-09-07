@@ -32,6 +32,22 @@ The contract accepts exactly one configured network-native coin per donation (`u
 
 The smart token is metadata-only. It identifies public project metadata; it is not a custody account and does not hold the donation balance.
 
+### Project attestation contract
+
+`contracts/attestation` is a separate CosmWasm contract for project validation. It calculates `min(5 + floor(goal_tx / 10000), 30)` required attestations, requires a weighted score of four times that threshold, pauses on any fraud flag, and records reviewer wallet, decision, and reputation on-chain. The owner can register approved reviewers, register projects, and perform an emergency status override. Build it with `npm run coreum:build:attestation` and deploy it separately from the donation vault after an independent contract review.
+
+TX provides a separate authenticated Marketplace KYC API. `supabase/functions/sync-tx-kyc` calls `GET /kyc/get?external_user_id=...` with the TX auth token and stores only `externaluserid` and normalized `kyc_status`; it discards the response, which contains PII. TX's documented response does not expose a reliable applicant type, so `applicant_type` starts as `unknown` and must be set to `individual` or `company` by an authorized admin after the appropriate compliance review. Project creation is blocked unless the owner wallet is approved and classified as `company`; attestation submission is blocked unless the reviewer is approved and classified as `individual`.
+
+Deploy the function with `supabase functions deploy sync-tx-kyc --no-verify-jwt`. The function requires the caller's runtime TX authorization value in `X-TX-Authorization`; it does not store or invent a TX API key. `TX_NETWORK` and `TX_KYC_BASE_URL` remain static configuration values. Migration `017` leaves KYC and attestation enforcement disabled while TX Marketplace is unavailable, so the existing admin moderation flow remains authoritative. An admin can later enable both checks with `admin_set_validation_mode(true, true)`.
+
+```powershell
+supabase secrets set TX_NETWORK=testnet TX_KYC_BASE_URL=https://com-be-kyc-service-zk6dps4acq-uc.a.run.app
+```
+
+Call the function with an authenticated Supabase user session, the runtime TX token in `X-TX-Authorization`, and `{ "externalUserId": "...", "walletAddress": "..." }`. The admin-only database function `admin_set_identity_applicant_type(uuid, text)` assigns the trusted `individual` or `company` classification.
+
+To test the TX endpoint without storing credentials, run `npm run tx:check-kyc` with `TX_EXTERNAL_USER_ID` and `TX_AUTHORIZATION` set in the current shell. The script prints only the HTTP status, external ID, and KYC status; it never prints the token or raw KYC response.
+
 ### Donation tracking
 
 The source of truth is TX transaction history, not a webhook. [scripts/coreum-indexer.ts](scripts/coreum-indexer.ts) scans only our contract address, requires the expected donation event attributes, persists a cursor in Supabase, and upserts by transaction hash. It can replay missed blocks after downtime.

@@ -26,7 +26,9 @@
     ,"coreum:register": "tsx scripts/register-project.ts",
     "coreum:seed:samples": "tsx scripts/seed-sample-projects.ts",
     "coreum:claim": "tsx scripts/claim-project.ts",
-    "coreum:build:wasm": "cargo build --manifest-path contracts/donation/Cargo.toml --release --target wasm32-unknown-unknown"
+    "coreum:build:wasm": "cargo build --manifest-path contracts/donation/Cargo.toml --release --target wasm32-unknown-unknown",
+    "coreum:build:attestation": "cargo build --manifest-path contracts/attestation/Cargo.toml --release --target wasm32-unknown-unknown",
+    "tx:check-kyc": "tsx scripts/check-tx-kyc.ts"
   },
   "dependencies": {
     "@cosmjs/cosmwasm-stargate": "^0.38.1",
