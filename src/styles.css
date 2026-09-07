@@ -40,7 +40,7 @@ a { color:inherit; text-decoration:none; }
 .church-category-select { width:100%; min-height:42px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--white); color:var(--ink); padding:0 13px; font-size:10px; outline:none; }
 .church-category-select:focus { border-color:var(--coral); }
 .church-step-tabs { display:flex; gap:18px; margin:0 0 24px; padding-bottom:14px; border-bottom:1px solid var(--line); }
-.church-step { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:9px; font-weight:800; }
+.church-step { display:flex; align-items:center; gap:7px; border:0; padding:0; background:transparent; color:var(--muted); cursor:pointer; font:800 9px 'Manrope', sans-serif; }
 .church-step b { display:grid; place-items:center; width:22px; height:22px; border:1px solid var(--line); border-radius:50%; font-size:9px; }
 .church-step.active, .church-step.complete { color:var(--ink); }
 .church-step.active b, .church-step.complete b { background:var(--coral); border-color:var(--coral); color:var(--white); }
@@ -342,6 +342,7 @@ main { animation: pageIn .5s var(--ease-out) both; }
 .modal-close { top: 18px; right: 18px; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 50%; }
 .modal-close:hover { border-color: var(--line); background: var(--sage); }
 .modal h2 { font-size: clamp(32px, 5vw, 40px); }
+.modal h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .modal-action { width: 100%; margin-top: 18px; }
 .amount-option { border-radius: var(--radius-sm); min-height: 48px; }
 .custom-amount { align-items: center; gap: 12px; }
@@ -580,7 +581,7 @@ main { animation: pageIn .5s var(--ease-out) both; }
 .project-card-body { padding:20px 22px 22px; }
 
 /* Keep the church submission flow stable while its step content changes. */
-.modal:has(.church-project-form) { width:min(92vw, 820px); height:min(780px, calc(100dvh - 32px)); max-height:none; overflow-x:hidden; overflow-y:auto; scrollbar-gutter:stable both-edges; }
+.modal:has(.church-project-form) { width:min(92vw, 820px); height:min(700px, calc(100dvh - 80px)); max-height:none; overflow-x:hidden; overflow-y:hidden; scrollbar-gutter:stable both-edges; }
 .church-project-form { width:100%; min-width:0; }
 .church-category-options { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .church-category-options legend { flex-basis:100%; }
@@ -594,7 +595,8 @@ main { animation: pageIn .5s var(--ease-out) both; }
 
 .modal:has(.church-project-form) { overflow:hidden; }
 .church-project-form { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; }
-.church-modal-content { flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto; scrollbar-gutter:stable; padding-right:4px; }
+.church-project-form-header { flex:0 0 auto; min-width:0; }
+.church-modal-content { flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto; scrollbar-gutter:stable; padding:8px 8px 12px 4px; }
 .church-step-actions { flex:0 0 auto; border-top:1px solid var(--line); padding-top:16px; margin-top:16px; background:var(--white); }
 
 @media (max-width: 760px) {

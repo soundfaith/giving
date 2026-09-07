@@ -175,21 +175,19 @@ export function ModalLayer({
   };
   const advanceChurchStep = () => {
     setMessage("");
-    if (churchStep === 1) {
-      if (!churchForm.name.trim() || !churchForm.churchName.trim() || !churchForm.title.trim() || !churchForm.location.trim() || !churchForm.goalTx || Number(churchForm.goalTx) <= 0) {
-        setMessage("Complete the project details before continuing.");
-        return;
-      }
-    }
-    if (churchStep === 2 && !churchForm.description.trim()) {
-      setMessage("Add a detailed description before continuing.");
-      return;
-    }
     setChurchStep((current) => Math.min(3, current + 1));
+  };
+  const selectChurchStep = (targetStep: number) => {
+    setMessage("");
+    setChurchStep(targetStep);
   };
   const submitChurch = async (event: FormEvent) => {
     event.preventDefault();
     setMessage("");
+    if (!churchForm.name.trim() || !churchForm.churchName.trim() || !churchForm.title.trim() || !churchForm.location.trim() || !churchForm.description.trim() || !churchForm.goalTx || Number(churchForm.goalTx) <= 0) {
+      setMessage("Complete all project fields before submitting.");
+      return;
+    }
     setChurchLoading(true);
     try {
       const ownerWalletAddress = await getBrowserWalletAddress();
@@ -700,9 +698,7 @@ export function ModalLayer({
               </div>
               <p className="eyebrow">Project submitted</p>
               <h2 id="modal-title">
-                We’ll review
-                <br />
-                <em>your project.</em>
+                We’ll review <em>your project.</em>
               </h2>
               <p className="modal-copy">
                 Your church improvement plan is saved for review.
@@ -715,21 +711,24 @@ export function ModalLayer({
               </button>
             </div>
           ) : (
-            <form className="church-project-form" onSubmit={submitChurch}>
-              <div className="church-modal-content">
-              <div className="church-step-tabs" aria-label="Project submission steps">
-                {["Project details", "Description", "Upload images"].map((label, index) => <span className={churchStep === index + 1 ? "church-step active" : churchStep > index + 1 ? "church-step complete" : "church-step"} key={label}><b>{index + 1}</b>{label}</span>)}
+            <form className="church-project-form" onSubmit={(event) => {
+              if (churchStep !== 3) {
+                event.preventDefault();
+                advanceChurchStep();
+                return;
+              }
+              void submitChurch(event);
+            }}>
+              <div className="church-project-form-header">
+                <div className="church-step-tabs" aria-label="Project submission steps">
+                  {["Project details", "Description", "Upload images"].map((label, index) => <button type="button" className={churchStep === index + 1 ? "church-step active" : churchStep > index + 1 ? "church-step complete" : "church-step"} onClick={() => selectChurchStep(index + 1)} key={label}><b>{index + 1}</b>{label}</button>)}
+                </div>
+                <h2 id="modal-title">Make room <em>for more.</em></h2>
+                <p className="modal-copy">Submit a church improvement plan for your community. Explain the project in detail. Clear context, goals, and expected impact help the review team understand and assess your plan.</p>
               </div>
-              <p className="eyebrow">For churches</p>
-              <h2 id="modal-title">
-                Make room
-                <br />
-                <em>for more.</em>
-              </h2>
-              <p className="modal-copy">Submit a church improvement plan for your community.</p>
+              <div className="church-modal-content">
               {churchStep === 1 && <div className="church-form">
                 <input
-                  required
                   placeholder="Organization name"
                   value={churchForm.name}
                   onChange={(event) =>
@@ -737,7 +736,6 @@ export function ModalLayer({
                   }
                 />
                 <input
-                  required
                   placeholder="Church name"
                   value={churchForm.churchName}
                   onChange={(event) =>
@@ -748,7 +746,6 @@ export function ModalLayer({
                   }
                 />
                 <input
-                  required
                   placeholder="Project title"
                   value={churchForm.title}
                   onChange={(event) =>
@@ -756,7 +753,6 @@ export function ModalLayer({
                   }
                 />
                 <input
-                  required
                   placeholder="City, State"
                   value={churchForm.location}
                   onChange={(event) =>
@@ -769,7 +765,6 @@ export function ModalLayer({
                 <fieldset className="church-category-options"><legend>Project type</legend>{projectCategories.map((category) => <label className={churchForm.category === category ? "church-category-option selected" : "church-category-option"} key={category}><input type="radio" name="project-category" value={category} checked={churchForm.category === category} onChange={() => setChurchForm({ ...churchForm, category })} /><span>{category}</span></label>)}</fieldset>
                 <input
                   className="goal-input"
-                  required
                   type="number"
                   min="1"
                   placeholder="Goal in TX"
@@ -779,7 +774,7 @@ export function ModalLayer({
                   }
                 />
               </div>}
-              {churchStep === 2 && <div className="church-step-panel"><p className="modal-copy">Explain the project in detail. Clear context, goals, and expected impact help the review team understand and assess your plan.</p><textarea required className="church-description-large" placeholder="Describe what you want to improve, why it matters, and what this funding will make possible." value={churchForm.description} onChange={(event) => setChurchForm({ ...churchForm, description: event.target.value })} /></div>}
+              {churchStep === 2 && <div className="church-step-panel"><textarea className="church-description-large" placeholder="Describe what you want to improve, why it matters, and what this funding will make possible." value={churchForm.description} onChange={(event) => setChurchForm({ ...churchForm, description: event.target.value })} /></div>}
               {churchStep === 3 && <div className="church-step-panel"><p className="modal-copy">Upload up to three images and choose which image appears first in the catalog and project detail view.</p><label className="church-upload-card"><span>Choose up to 3 images</span><small>JPG, PNG, or WebP</small><input type="file" accept="image/*" multiple onChange={updateChurchPhotos} /></label>{churchPhotos.length > 0 && <><div className="church-photo-previews">{churchPhotos.map((photo, index) => <button type="button" className={index === churchPrimaryPhoto ? "church-photo-preview selected" : "church-photo-preview"} key={`${photo.name}-${index}`} onClick={() => setChurchPrimaryPhoto(index)}><img src={churchPhotoUrls[index]} alt={`Project preview ${index + 1}`} /><span>{index === churchPrimaryPhoto ? "Selected image" : "Use this image"}</span></button>)}</div><div className="church-image-previews"><div><p className="eyebrow">Catalog preview</p><article className="church-catalog-preview"><img src={churchPhotoUrls[churchPrimaryPhoto]} alt="Selected project catalog preview" /><div><strong>{churchForm.title || "Your project title"}</strong><span>{churchForm.churchName || "Your church"}</span></div></article></div><div><p className="eyebrow">Project detail preview</p><article className="church-detail-preview"><img src={churchPhotoUrls[churchPrimaryPhoto]} alt="Selected project detail preview" /><strong>{churchForm.title || "Your project title"}</strong><span>{churchForm.description || "Your project description will appear here."}</span></article></div></div></>}</div>}
               {message && <p className="modal-footnote">{message}</p>}
               </div>
@@ -840,9 +835,7 @@ export function ModalLayer({
               </div>
               <p className="eyebrow">Contribution staged</p>
               <h2 id="modal-title">
-                You just made
-                <br />
-                <em>room for more.</em>
+                You just made <em>room for more.</em>
               </h2>
               <p className="modal-copy">
                 Your {formatMoney(amount)} gift to {modal.project.church} was

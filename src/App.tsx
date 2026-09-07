@@ -27,7 +27,10 @@ import {
   supabase,
   type Project,
 } from "./lib/supabase";
-import { getBrowserWalletAddress } from "./lib/walletVault";
+import {
+  activateBrowserWalletForAddress,
+  clearActiveBrowserWallet,
+} from "./lib/walletVault";
 
 function readRoute() {
   const path = window.location.hash.replace(/^#\/?/, "").split("?")[0];
@@ -94,12 +97,21 @@ export default function App() {
     const handleSession = async (email: string | null) => {
       if (!active) return;
       setAuthUser(email);
-      if (!email) return;
+      if (!email) {
+        clearActiveBrowserWallet();
+        return;
+      }
       const profile = await identityRepository.syncProfile().catch(() => null);
-      const walletAddress = await getBrowserWalletAddress().catch(() => null);
-      if (walletAddress) {
-        await identityRepository.syncProfile(walletAddress).catch(() => {});
-      } else if (active)
+      const walletAddress = profile?.wallet_address ?? null;
+      const localWallet = walletAddress
+        ? await activateBrowserWalletForAddress(walletAddress)
+        : null;
+      if (!localWallet) {
+        clearActiveBrowserWallet();
+      } else {
+        await identityRepository.syncProfile(localWallet.address).catch(() => {});
+      }
+      if (!localWallet && active)
         setModal({
           type: "wallet-setup",
           walletAddress: profile?.wallet_address ?? null,

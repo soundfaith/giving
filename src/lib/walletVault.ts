@@ -103,6 +103,10 @@ function setActiveWallet(id: string) {
   window.localStorage.setItem(activeWalletKey, id);
 }
 
+export function clearActiveBrowserWallet() {
+  window.localStorage.removeItem(activeWalletKey);
+}
+
 export type BrowserWallet = { id: string; name: string; address: string; createdAt: string };
 
 export async function getBrowserWallets(): Promise<BrowserWallet[]> {
@@ -112,6 +116,13 @@ export async function getBrowserWallets(): Promise<BrowserWallet[]> {
 export async function switchBrowserWallet(id: string) {
   const wallet = await readVault(id);
   if (!wallet) throw new Error("That wallet is not available on this device.");
+  setActiveWallet(wallet.id);
+  return { id: wallet.id, name: wallet.name ?? "Coreum wallet", address: wallet.address };
+}
+
+export async function activateBrowserWalletForAddress(address: string) {
+  const wallet = (await listVaults()).find((item) => item.address === address);
+  if (!wallet) return null;
   setActiveWallet(wallet.id);
   return { id: wallet.id, name: wallet.name ?? "Coreum wallet", address: wallet.address };
 }
