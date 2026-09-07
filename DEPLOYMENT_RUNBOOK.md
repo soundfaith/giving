@@ -111,7 +111,7 @@ Do not run migration 011 casually. It deletes Supabase projects, profiles, donat
 
 The admin page only bypasses the reviewer decision. It changes a project from `review` to `approved_pending_chain`. The relayer below is the only application process that signs `register_project` with the contract-owner wallet. After the transaction succeeds, it calls the service-role activation RPC, which changes the project to `active`.
 
-The relayer is a Supabase Edge Function. Vercel invokes it every minute through `/api/relayer`. Configure these Vercel environment variables: `SUPABASE_URL`, `RELAYER_CRON_SECRET`, and `CRON_SECRET`. The first must point to the linked Supabase project; the two secrets must match the Supabase function configuration and Vercel cron protection respectively.
+The relayer is a Supabase Edge Function. Admin approval invokes it immediately through the authenticated Supabase session, so it does not require a Vercel Cron job. The function can also be invoked manually with `RELAYER_CRON_SECRET` for queue drains.
 
 For local development, start the function locally and invoke it with:
 
@@ -129,13 +129,13 @@ The legacy Windows worker can still be run manually in a private environment wit
 npm run coreum:relayer:credential
 ```
 
-Do not install the legacy worker as a Windows Scheduled Task. Vercel is now the scheduler:
+Do not install the legacy worker as a Windows Scheduled Task. Admin approval invokes the Edge Function directly:
 
 ```powershell
-vercel deploy --prod
+npm run build
 ```
 
-The Vercel cron invokes the Supabase Edge Function once per minute. The function retrieves the contract-owner mnemonic and service-role key from Supabase secrets and removes no credentials from the browser.
+The Supabase Edge Function retrieves the contract-owner mnemonic and service-role key from Supabase secrets and exposes no credentials to the browser.
 
 The relayer uses each project's `owner_wallet_address` as the on-chain beneficiary. It never signs with or replaces that wallet, and it does not expose the contract-owner mnemonic to the browser.
 

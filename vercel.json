@@ -3,6 +3,5 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "cleanUrls": true,
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
-  "crons": [{ "path": "/api/relayer", "schedule": "* * * * *" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

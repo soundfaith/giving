@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Check, RefreshCw, Shield, X } from "lucide-react";
-import { getAdminData, getAdminStatus, getRelayerStatus, overrideAttestation, resolveProject, setReviewerStatus, setReviewThresholds, type AdminProject, type AdminReviewer, type RelayerStatus } from "../lib/admin";
+import { getAdminData, getAdminStatus, getRelayerStatus, invokeRelayer, overrideAttestation, resolveProject, setReviewerStatus, setReviewThresholds, type AdminProject, type AdminReviewer, type RelayerStatus } from "../lib/admin";
 
 export function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
@@ -44,7 +44,14 @@ export function AdminPage() {
       await resolveProject(project.id, status);
       const nextStatus = status === "approve" ? "approved_pending_chain" : "closed";
       setProjects((items) => items.map((item) => item.id === project.id ? { ...item, status: nextStatus } : item));
-      setMessage(status === "approve" ? "Review bypassed. The private chain relayer will register the project on TX." : "Project closed.");
+      if (status === "approve") {
+        try {
+          await invokeRelayer();
+          setMessage("Project approved and registered on TX.");
+        } catch (error) {
+          setMessage(`Project approved, but chain registration could not start: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      } else setMessage("Project closed.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to resolve project"); }
   };
 

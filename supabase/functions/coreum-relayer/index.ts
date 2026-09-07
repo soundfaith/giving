@@ -25,8 +25,29 @@ Deno.serve(async (request) => {
   if (request.method !== "POST") return json({ error: "POST required" }, 405);
 
   try {
-    const relayerSecret = env("RELAYER_CRON_SECRET");
-    if (request.headers.get("x-relayer-secret") !== relayerSecret) return json({ error: "Unauthorized" }, 401);
+    const relayerSecret = Deno.env.get("RELAYER_CRON_SECRET");
+    const suppliedSecret = request.headers.get("x-relayer-secret");
+    let authorized = Boolean(relayerSecret && suppliedSecret === relayerSecret);
+    if (!authorized) {
+      const authorization = request.headers.get("Authorization");
+      if (authorization?.startsWith("Bearer ")) {
+        const supabaseUrl = env("SUPABASE_URL");
+        const serviceRoleKey = env("SUPABASE_SERVICE_ROLE_KEY");
+        const userClient = createClient(supabaseUrl, serviceRoleKey, {
+          global: { headers: { Authorization: authorization } },
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: { user } } = await userClient.auth.getUser();
+        if (user) {
+          const { data: profile } = await userClient.from("profiles").select("wallet_address").eq("id", user.id).maybeSingle();
+          const { data: adminWallet } = profile?.wallet_address
+            ? await userClient.from("admin_wallets").select("wallet_address").eq("wallet_address", profile.wallet_address).eq("active", true).maybeSingle()
+            : { data: null };
+          authorized = Boolean(adminWallet);
+        }
+      }
+    }
+    if (!authorized) return json({ error: "Unauthorized" }, 401);
 
     const mnemonic = env("COREUM_MNEMONIC");
     const rpcUrl = Deno.env.get("COREUM_RPC_URL") ?? "https://rpc.testnet-1.tx.org:443";
