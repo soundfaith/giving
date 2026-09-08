@@ -82,6 +82,13 @@ Deno.serve(async (request) => {
       .eq("status", "approved_pending_chain")
       .order("created_at", { ascending: true });
     if (projectError) throw projectError;
+    const { data: rate, error: rateError } = await supabase
+      .from("tx_exchange_rates")
+      .select("tx_usd_rate")
+      .eq("id", true)
+      .single();
+    if (rateError) throw rateError;
+    const txUsdRate = Number(rate.tx_usd_rate);
 
     const results: Array<{ id: string; status: string; txHash?: string; error?: string }> = [];
     for (const project of projects ?? []) {
@@ -97,7 +104,7 @@ Deno.serve(async (request) => {
             register_project: {
               project: {
                 id: project.id,
-                goal_micro_tx: String(Math.round(Number(project.goal_tx) * 1_000_000)),
+                goal_micro_tx: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
                 status: "active",
                 metadata_token_id: "",
                 beneficiary: project.owner_wallet_address,

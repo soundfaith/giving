@@ -37,12 +37,16 @@ export type DonationRecord = {
   id: string;
   project_id: string;
   amount_tx: number;
+  tx_usd_rate?: number | null;
+  amount_usd?: number | null;
   tx_hash: string;
   network: string;
   created_at: string;
   project?: { title: string; church_name: string } | null;
   wallet_address?: string | null;
 };
+
+export type TxExchangeRate = { tx_usd_rate: number; updated_at: string };
 
 export type ProjectComment = {
   id: string;
@@ -102,6 +106,8 @@ export const projectRepository = {
       .in("status", ["active", "funded"])
       .order("created_at", { ascending: false });
     if (error) throw error;
+    const { data: rate } = await supabase.from("tx_exchange_rates").select("tx_usd_rate").eq("id", true).maybeSingle();
+    const txUsdRate = Number(rate?.tx_usd_rate ?? 1);
     const projectIds = (data ?? []).map((project) => project.id);
     const { data: totals, error: totalsError } =
       projectIds.length > 0
@@ -137,7 +143,7 @@ export const projectRepository = {
         title: project.title,
         description: project.description,
         category: project.category as ProjectCategory,
-        raised: chainStats?.raised ?? Number(totalsByProject.get(project.id)?.raised_tx ?? 0),
+        raised: (chainStats?.raised ?? Number(totalsByProject.get(project.id)?.raised_tx ?? 0)) * txUsdRate,
         goal: Number(project.goal_tx),
         donors: chainStats?.donors ?? Number(totalsByProject.get(project.id)?.donor_count ?? 0),
         accent: "photo-harbor",
@@ -155,6 +161,8 @@ export const projectRepository = {
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
+    const { data: rate } = await supabase.from("tx_exchange_rates").select("tx_usd_rate").eq("id", true).maybeSingle();
+    const txUsdRate = Number(rate?.tx_usd_rate ?? 1);
 
     const project = {
       id: data.id,
@@ -172,7 +180,7 @@ export const projectRepository = {
 
     try {
       const onChainProject = await getProjectOnChain(projectId);
-      project.raised = Number(onChainProject.raised_micro_tx ?? "0") / 1_000_000;
+      project.raised = (Number(onChainProject.raised_micro_tx ?? "0") / 1_000_000) * txUsdRate;
       project.donors = Number(onChainProject.donor_count ?? 0);
     } catch {
       const { data: totals, error: totalsError } = await supabase
@@ -181,7 +189,7 @@ export const projectRepository = {
         .eq("id", projectId)
         .maybeSingle();
       if (!totalsError && totals) {
-        project.raised = Number(totals.raised_tx ?? 0);
+        project.raised = Number(totals.raised_tx ?? 0) * txUsdRate;
         project.donors = Number(totals.donor_count ?? 0);
       }
     }
@@ -193,7 +201,7 @@ export const projectRepository = {
     if (!supabase) return [];
     const { data, error } = await supabase
       .from("donations")
-      .select("id, project_id, amount_tx, tx_hash, network, created_at, wallet_address")
+      .select("id, project_id, amount_tx, tx_usd_rate, amount_usd, tx_hash, network, created_at, wallet_address")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
     if (error) throw error;
@@ -390,7 +398,7 @@ export const identityRepository = {
     if (donorDonationsError) throw donorDonationsError;
     const ownedProjectIds = (ownedProjects ?? []).map((project) => project.id);
     const { data: ownerDonations, error: ownerDonationsError } = ownedProjectIds.length
-      ? await supabase.from("donations").select("id, project_id, amount_tx, tx_hash, network, created_at, wallet_address, projects(title, church_name)").in("project_id", ownedProjectIds).order("created_at", { ascending: false })
+      ? await supabase.from("donations").select("id, project_id, amount_tx, tx_usd_rate, amount_usd, tx_hash, network, created_at, wallet_address, projects(title, church_name)").in("project_id", ownedProjectIds).order("created_at", { ascending: false })
       : { data: [], error: null };
     if (ownerDonationsError) throw ownerDonationsError;
     const donationsById = new Map<string, DonationRecord>();
@@ -403,6 +411,13 @@ export const identityRepository = {
     const { data, error } = await supabase.from("notifications").select("id, kind, project_id, title, message, read_at, created_at").order("created_at", { ascending: false }).range(offset, offset + limit - 1);
     if (error) throw error;
     return (data ?? []) as Notification[];
+  },
+
+  async getTxExchangeRate(): Promise<TxExchangeRate> {
+    if (!supabase) return { tx_usd_rate: 1, updated_at: new Date(0).toISOString() };
+    const { data, error } = await supabase.from("tx_exchange_rates").select("tx_usd_rate, updated_at").eq("id", true).single();
+    if (error) throw error;
+    return { tx_usd_rate: Number(data.tx_usd_rate), updated_at: data.updated_at };
   },
 
   async markNotificationRead(id: string) {

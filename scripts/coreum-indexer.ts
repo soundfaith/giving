@@ -66,12 +66,18 @@ async function indexDonations() {
     }
 
     const { data: profile } = await supabase.from('profiles').select('id').eq('wallet_address', donorAddress).maybeSingle()
+    const { data: rate, error: rateError } = await supabase.from('tx_exchange_rates').select('tx_usd_rate').eq('id', true).single()
+    if (rateError) throw rateError
+    const amountTx = Number(amountMicroTx) / 1_000_000
+    const txUsdRate = Number(rate.tx_usd_rate)
 
     const { error } = await supabase.from('donations').upsert({
       project_id: projectId,
       profile_id: profile?.id ?? null,
       wallet_address: donorAddress,
-      amount_tx: Number(amountMicroTx) / 1_000_000,
+      amount_tx: amountTx,
+      tx_usd_rate: txUsdRate,
+      amount_usd: amountTx * txUsdRate,
       tx_hash: transaction.hash,
       network: process.env.COREUM_NETWORK === 'mainnet' ? 'coreum-mainnet' : 'coreum-testnet',
     }, { onConflict: 'tx_hash', ignoreDuplicates: true })

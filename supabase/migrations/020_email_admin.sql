@@ -1,4 +1,5 @@
 -- The admin identity is the authenticated email, independent of its linked wallet.
+-- Migration 022 moves the email into the compatibility admin registry table.
 create or replace function public.is_soundfaith_admin()
 returns boolean
 language sql

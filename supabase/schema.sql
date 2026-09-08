@@ -36,6 +36,22 @@ create table if not exists public.projects (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.tx_exchange_rates (
+  id boolean primary key default true check (id),
+  tx_usd_rate numeric not null default 1 check (tx_usd_rate > 0),
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users(id)
+);
+
+insert into public.tx_exchange_rates (id, tx_usd_rate)
+values (true, 1)
+on conflict (id) do nothing;
+
+alter table public.tx_exchange_rates enable row level security;
+create policy "anyone can read the current TX rate" on public.tx_exchange_rates
+  for select using (true);
+grant select on public.tx_exchange_rates to anon, authenticated;
+
 create table if not exists public.church_organizations (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references auth.users(id) on delete cascade,
@@ -55,6 +71,8 @@ create table if not exists public.donations (
   identity_id uuid references public.identities(id),
   wallet_address text not null,
   amount_tx numeric not null check (amount_tx > 0),
+  tx_usd_rate numeric check (tx_usd_rate > 0),
+  amount_usd numeric check (amount_usd > 0),
   tx_hash text unique not null,
   network text not null default 'coreum-testnet',
   created_at timestamptz not null default now()

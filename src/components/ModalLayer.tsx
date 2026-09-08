@@ -43,6 +43,7 @@ export function ModalLayer({
 }) {
   const [amount, setAmount] = useState(50);
   const [customAmount, setCustomAmount] = useState("50");
+  const [txUsdRate, setTxUsdRate] = useState(1);
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -89,9 +90,10 @@ export function ModalLayer({
   }, [churchPhotos]);
   useEffect(() => {
     if (modal.type === "donate")
-      getBrowserWalletAddress().then((address) =>
-        setLocalWalletAvailable(Boolean(address)),
-      );
+      Promise.all([getBrowserWalletAddress(), identityRepository.getTxExchangeRate()]).then(([address, rate]) => {
+        setLocalWalletAvailable(Boolean(address));
+        setTxUsdRate(rate.tx_usd_rate);
+      });
     if (modal.type !== "account") return;
     Promise.all([
       identityRepository.getProfile(),
@@ -775,7 +777,7 @@ export function ModalLayer({
                   className="goal-input"
                   type="number"
                   min="1"
-                  placeholder="Goal in TX"
+                  placeholder="Goal in USD"
                   value={churchForm.goalTx}
                   onChange={(event) =>
                     setChurchForm({ ...churchForm, goalTx: event.target.value })
@@ -846,7 +848,7 @@ export function ModalLayer({
                 You just made <em>room for more.</em>
               </h2>
               <p className="modal-copy">
-                Your {formatMoney(amount)} gift to {modal.project.church} was
+                Your {amount.toFixed(6)} TX gift (about {formatMoney(amount * txUsdRate)}) to {modal.project.church} was
                 submitted to the Coreum vault.
               </p>
               {transactionHash && (
@@ -866,7 +868,7 @@ export function ModalLayer({
                 Give to <em>{modal.project.church}.</em>
               </h2>
               <p className="modal-copy">
-                Choose an amount to help “{modal.project.title}”.
+                Choose an amount in TX to help “{modal.project.title}”.
               </p>
               <div className="amount-grid">
                 {[25, 50, 100, 250].map((value) => (
@@ -883,12 +885,12 @@ export function ModalLayer({
                       setCustomAmount(String(value));
                     }}
                   >
-                    {formatMoney(value)}
+                    {value} TX
                   </button>
                 ))}
               </div>
               <label className="custom-amount">
-                <span>Custom amount</span>
+                <span>Donation amount</span>
                 <input
                   type="number"
                   min="0.000001"
@@ -904,6 +906,7 @@ export function ModalLayer({
                 />
                 <span>TX</span>
               </label>
+              <p className="modal-footnote">1 TX = {formatMoney(txUsdRate)} · Estimated value: {formatMoney(amount * txUsdRate)}</p>
               {localWalletAvailable && (
                 <input
                   className="wallet-signing-password"
@@ -923,9 +926,9 @@ export function ModalLayer({
                   amount <= 0
                 }
               >
-                {loading
-                  ? "Preparing contribution..."
-                  : `Continue with ${Number.isFinite(amount) && amount > 0 ? formatMoney(amount) : "custom amount"}`}{" "}
+                  {loading
+                    ? "Preparing contribution..."
+                    : `Continue with ${Number.isFinite(amount) && amount > 0 ? `${amount} TX` : "custom amount"}`}{" "}
                 <ArrowUpRight size={16} />
               </button>
               {message && <p className="modal-footnote">{message}</p>}
