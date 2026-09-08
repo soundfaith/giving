@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bell,
   Compass,
   Heart,
   Home,
@@ -10,7 +9,6 @@ import {
   X,
 } from "lucide-react";
 import { Brand } from "./components/Brand";
-import { getAdminStatus } from "./lib/admin";
 import { ModalLayer, type Modal } from "./components/ModalLayer";
 import { HomePage } from "./pages/HomePage";
 import { AllProjectsPage } from "./pages/AllProjectsPage";
@@ -57,15 +55,23 @@ export default function App() {
   const [modal, setModal] = useState<Modal | null>(null);
   const [projectList, setProjectList] = useState<Project[]>(fallbackProjects);
   const [authUser, setAuthUser] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
-  useEffect(() => {
+  const refreshUnreadNotifications = () => {
     if (!authUser) {
-      setIsAdmin(false);
+      setUnreadNotifications(0);
       return;
     }
-    getAdminStatus().then(setIsAdmin).catch(() => setIsAdmin(false));
-  }, [authUser]);
+    void identityRepository.getNotifications(0, 20)
+      .then((items) => setUnreadNotifications(items.filter((item) => !item.read_at).length))
+      .catch(() => setUnreadNotifications(0));
+  };
+
+  useEffect(() => {
+    refreshUnreadNotifications();
+    window.addEventListener("soundfaith-notifications-changed", refreshUnreadNotifications);
+    return () => window.removeEventListener("soundfaith-notifications-changed", refreshUnreadNotifications);
+  }, [authUser, route.name]);
 
   useEffect(() => {
     if (!mobileMenu) return;
@@ -219,21 +225,10 @@ export default function App() {
           aria-label="Primary navigation"
         >
           <a href="#/all-projects" onClick={() => setMobileMenu(false)}>
-            Browse{" "}
-            <span className="nav-count">
-              {String(projectList.length).padStart(2, "0")}
-            </span>
+            {authUser ? "Browse" : "Browse Projects"}
           </a>
-          <a href="#/?section=featured" onClick={() => setMobileMenu(false)}>
-            Featured
-          </a>
-          <a href="#/activities" onClick={() => setMobileMenu(false)}>
-            Activities
-          </a>
-          <a href="#/churches" onClick={() => setMobileMenu(false)}>
-            For churches
-          </a>
-          {isAdmin && <a href="#/admin" onClick={() => setMobileMenu(false)}>Admin</a>}
+          <a href="#/churches" onClick={() => setMobileMenu(false)}>Create Project</a>
+          {authUser && <a href="#/activities" onClick={() => setMobileMenu(false)}>Activities</a>}
         </nav>
         <a
           className="button button-dark header-wallet"
@@ -245,15 +240,7 @@ export default function App() {
             }
           }}
         >
-          <Wallet size={15} /> {authUser ? "Profile" : "Login"}
-        </a>
-        <a
-          className="icon-button notification-link"
-          href="#/notifications"
-          aria-label="Notifications"
-          title="Notifications"
-        >
-          <Bell size={16} />
+          <Wallet size={15} /> {authUser ? "Profile" : "Sign in"}
         </a>
         <button
           className="icon-button mobile-toggle"
@@ -291,7 +278,10 @@ export default function App() {
           href="#/profile"
           className={route.name === "profile" ? "active" : ""}
         >
-          <UserRound size={17} />
+          <span className="mobile-profile-icon-wrap">
+            <UserRound size={17} />
+            {unreadNotifications > 0 && <span className="notification-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}
+          </span>
           <span>Profile</span>
         </a>
       </nav>

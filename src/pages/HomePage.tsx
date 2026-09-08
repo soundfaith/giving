@@ -27,26 +27,24 @@ export function HomePage({ projects, onProject, onDonate }: {
       <section className="hero section-wrap">
         <div className="hero-copy reveal reveal-one">
           <p className="eyebrow"><span className="eyebrow-dot" /> For churches, by communities</p>
-          <h1>Give directly to your<br /><em>church's mission.</em></h1>
-          <p className="hero-description">Transparent, blockchain-powered giving. Every dollar to your church's project. No middleman.</p>
-          <div className="hero-actions">
-            <a className="button button-coral" href="#/all-projects">Give now <ArrowUpRight size={16} /></a>
-          </div>
-        </div>
-        <div className="hero-aside reveal reveal-two">
+          <h1>Give toward the<br /><em>Church's mission.</em></h1>
+          <p className="hero-description">A trusted way to support the Church through transparent, mission‑aligned giving.</p>
           <div className="trust-cards">
             <div className="trust-card">
               <Shield size={24} />
-              <span>Every dollar reaches your church's work</span>
+              <span>Every dollar goes to the project</span>
             </div>
             <div className="trust-card">
               <Link2 size={24} />
-              <span>Verified by local church leaders</span>
+              <span>Verified through community attestations</span>
             </div>
             <div className="trust-card">
               <Lock size={24} />
-              <span>Permanent blockchain record</span>
+              <span>Fully auditable on the blockchain</span>
             </div>
+          </div>
+          <div className="hero-actions">
+            <a className="button button-coral" href="#/all-projects">Give now <ArrowUpRight size={16} /></a>
           </div>
         </div>
       </section>
