@@ -106,7 +106,7 @@ export function HomePage({ projects, onProject, onDonate }: {
         <div className="how-header">
           <div>
             <p className="eyebrow">Simple process</p>
-            <h2>How it <em>works.</em></h2>
+            <h2>How it<br /><em>works.</em></h2>
           </div>
         </div>
         

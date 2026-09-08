@@ -277,7 +277,7 @@ export function ModalLayer({
       const { address } = await importBrowserWalletMnemonic(
         mnemonic,
         walletPassword,
-        rememberedWalletAddress,
+        null,
         "Recovered wallet",
         ownerEmail ?? undefined,
       );

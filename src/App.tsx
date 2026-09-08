@@ -21,6 +21,7 @@ import { ReviewPage } from "./pages/ReviewPage";
 import { AdminPage } from "./pages/AdminPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { ActivitiesPage } from "./pages/ActivitiesPage";
+import { TermsPage } from "./pages/TermsPage";
 import { projects as fallbackProjects } from "./lib/projects";
 import {
   projectRepository,
@@ -40,6 +41,7 @@ function readRoute() {
     return { name: "project" as const, id: path.slice("projects/".length) };
   if (path === "all-projects") return { name: "all-projects" as const };
   if (path === "churches") return { name: "churches" as const };
+  if (path === "terms") return { name: "terms" as const };
   if (path === "profile") return { name: "profile" as const };
   if (path === "review") return { name: "review" as const };
   if (path === "admin") return { name: "admin" as const };
@@ -170,8 +172,7 @@ export default function App() {
     () => projectList.find((item) => item.id === route.id),
     [projectList, route],
   );
-  const openChurch = () =>
-    setModal(authUser ? { type: "church" } : { type: "wallet" });
+  const openChurch = () => setModal({ type: "wallet" });
   const openProject = (item: Project) => {
     window.location.hash = `#/projects/${item.id}`;
   };
@@ -188,7 +189,9 @@ export default function App() {
         onDonate={openDonate}
       />
     ) : route.name === "churches" ? (
-      <ChurchPage authenticated={Boolean(authUser)} onContinue={openChurch} />
+      <ChurchPage authenticated={Boolean(authUser)} onSignIn={openChurch} />
+    ) : route.name === "terms" ? (
+      <TermsPage />
     ) : route.name === "profile" ? (
       <ProfilePage />
     ) : route.name === "notifications" ? (

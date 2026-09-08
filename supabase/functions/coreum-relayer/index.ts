@@ -39,11 +39,7 @@ Deno.serve(async (request) => {
         });
         const { data: { user } } = await userClient.auth.getUser();
         if (user) {
-          const { data: profile } = await userClient.from("profiles").select("wallet_address").eq("id", user.id).maybeSingle();
-          const { data: adminWallet } = profile?.wallet_address
-            ? await userClient.from("admin_wallets").select("wallet_address").eq("wallet_address", profile.wallet_address).eq("active", true).maybeSingle()
-            : { data: null };
-          authorized = Boolean(adminWallet);
+          authorized = user.email?.toLowerCase() === "soundfaith.core@gmail.com";
         }
       }
     }

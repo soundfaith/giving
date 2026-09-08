@@ -8,6 +8,6 @@ export function Progress({ project, large = false }: { project: Project; large?:
 export function ProjectVisual({ project, featured = false }: { project: Project; featured?: boolean }) {
   const imageUrl = project.image_urls?.[0];
   return <div className={`project-visual ${project.accent} ${featured ? "project-visual-featured" : ""} ${imageUrl ? "project-visual-has-image" : ""}`} style={imageUrl ? { backgroundImage: `url(${imageUrl})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined} role="img" aria-label={`${project.title} project visual`}>
-    <span className="visual-sun" /><span className="visual-arch" /><span className="visual-line" /><span className="visual-label">{project.category}</span>
+    {!imageUrl && <><span className="visual-sun" /><span className="visual-arch" /><span className="visual-line" /></>}<span className="visual-label">{project.category}</span>
   </div>;
 }
