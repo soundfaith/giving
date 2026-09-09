@@ -87,8 +87,8 @@ export function AllProjectsPage({ projects, onProject, onDonate }: {
                     <button className="card-details" onClick={(event) => { event.stopPropagation(); onProject(project); }}>
                       View project
                     </button>
-                    <button className="card-donate" onClick={(event) => { event.stopPropagation(); onDonate(project); }}>
-                      Donate
+                    <button className={project.status === "funded" ? "card-donate funded-donate" : "card-donate"} disabled={project.status === "funded"} onClick={(event) => { event.stopPropagation(); onDonate(project); }}>
+                      {project.status === "funded" ? "Funded" : "Donate"}
                     </button>
                   </div>
                 </div>

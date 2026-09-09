@@ -33,21 +33,23 @@ const donorAccounts = await Promise.all(donorWallets.map(async (wallet) => (awai
 const donorClients = await Promise.all(donorWallets.map((wallet) => SigningCosmWasmClient.connectWithSigner(rpcUrl, wallet)))
 
 const projectDefinitions = [
-  ['Harbor Light Church', 'Tacoma, WA', 'A clearer sound for Sunday', 'Sound & AV', 5, 0],
-  ['New Hope Chapel', 'Boise, ID', 'Safe steps into the gathering hall', 'Facilities & Maintenance', 7, 1],
-  ['Grace Community Church', 'Austin, TX', 'A welcoming worship space', 'Worship & Gathering', 10, 2],
-  ['St. Mark Fellowship', 'Cleveland, OH', 'Repair the community room roof', 'Facilities & Maintenance', 12, 3],
-  ['Riverside Church', 'Portland, OR', 'Project the words for every voice', 'Sound & AV', 15, 4],
-  ['Open Door Parish', 'Raleigh, NC', 'A table for neighborhood meals', 'Community & Outreach', 18, 0],
-  ['Cedar Grove Church', 'Madison, WI', 'Lights for the gathering room', 'Worship & Gathering', 20, 1],
-  ['Beacon Hill Church', 'Denver, CO', 'Accessible entry improvements', 'Facilities & Maintenance', 25, 2],
-  ['Common Ground Chapel', 'Richmond, VA', 'A stronger room for youth nights', 'Community & Outreach', 30, 3],
+  ['Harbor Light Church', 'Tacoma, WA', 'A clearer sound for Sunday', 'Sound & AV', 1, 0],
+  ['New Hope Chapel', 'Boise, ID', 'Safe steps into the gathering hall', 'Facilities & Maintenance', 1, 1],
+  ['Grace Community Church', 'Austin, TX', 'A welcoming worship space', 'Worship & Gathering', 2, 2],
+  ['St. Mark Fellowship', 'Cleveland, OH', 'Repair the community room roof', 'Facilities & Maintenance', 2, 3],
+  ['Riverside Church', 'Portland, OR', 'Project the words for every voice', 'Sound & AV', 3, 4],
+  ['Open Door Parish', 'Raleigh, NC', 'A table for neighborhood meals', 'Community & Outreach', 5, 0],
+  ['Cedar Grove Church', 'Madison, WI', 'Lights for the gathering room', 'Worship & Gathering', 7, 1],
+  ['Beacon Hill Church', 'Denver, CO', 'Accessible entry improvements', 'Facilities & Maintenance', 10, 2],
+  ['Common Ground Chapel', 'Richmond, VA', 'A stronger room for youth nights', 'Community & Outreach', 25, 3],
   ['Good Shepherd Church', 'Savannah, GA', 'Replace the aging sound console', 'Sound & AV', 50, 4],
 ] as const
 
 const goalAmounts = projectDefinitions.map(([, , , , goal]) => goal)
-const donationAmounts = [5, 1, 10, 2, 15, 3, 20, 5, 4, 50]
-const projectIds = projectDefinitions.map((_, index) => `70000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`)
+const donationAmounts = [20, 20, 20, 20, 50, 50, 50, 50, 50, 50]
+const donationWalletIndexes = [0, 1, 2, 3, 4, 4, 4, 4, 4, 4]
+const seedRun = BigInt(Date.now()).toString(16).slice(-12).padStart(12, '0')
+const projectIds = projectDefinitions.map((_, index) => `70000000-0000-4000-8000-${(BigInt(`0x${seedRun}`) + BigInt(index)).toString(16).padStart(12, '0')}`)
 
 async function listFiles(directory: string) {
   return (await fs.readdir(directory, { withFileTypes: true }))
@@ -72,6 +74,11 @@ async function removeStorageObjects(folder = ''): Promise<void> {
 const exterior = await listFiles(exteriorDir)
 const interior = await listFiles(interiorDir)
 if (exterior.length < 10 || interior.length < 20) throw new Error('Not enough church image assets were found.')
+
+const { data: currentRate, error: currentRateError } = await supabase.from('tx_exchange_rates').select('tx_usd_rate').eq('id', true).single()
+if (currentRateError) throw currentRateError
+const txUsdRate = Number(currentRate.tx_usd_rate)
+if (!Number.isFinite(txUsdRate) || txUsdRate <= 0) throw new Error('The current TX/USD rate is invalid.')
 
 await removeStorageObjects()
 const projects = []
@@ -118,7 +125,7 @@ for (let index = 0; index < projects.length; index += 1) {
   const project = projects[index]
   try {
     const result = await ownerClient.execute(ownerAccount.address, contractAddress, {
-      register_project: { project: { id: project.id, goal_micro_tx: String(goalAmounts[index] * 1_000_000), status: 'active', metadata_token_id: '', beneficiary: project.owner_wallet_address } },
+      register_project: { project: { id: project.id, goal_micro_tx: String(Math.ceil((goalAmounts[index] / txUsdRate) * 1_000_000)), status: 'active', metadata_token_id: '', beneficiary: project.owner_wallet_address } },
     }, fee, 'SoundFaith MVP project registration')
     console.log(`Registered project ${index + 1}/10: ${result.transactionHash}`)
   } catch (error) {
@@ -129,16 +136,11 @@ for (let index = 0; index < projects.length; index += 1) {
 
 for (let index = 0; index < projects.length; index += 1) {
   const amount = donationAmounts[index]
-  const donor = donorAccounts[index % donorAccounts.length]
-  const result = await donorClients[index % donorClients.length].execute(donor.address, contractAddress, { donate: { project_id: projectIds[index] } }, fee, 'SoundFaith MVP donation', [{ denom: nativeDenom, amount: String(amount * 1_000_000) }])
-  const { data: rate, error: rateError } = await supabase.from('tx_exchange_rates').select('tx_usd_rate').eq('id', true).single()
-  if (rateError) throw rateError
-  const { error: donationError } = await supabase.from('donations').upsert({ project_id: projectIds[index], wallet_address: donor.address, amount_tx: amount, tx_usd_rate: rate.tx_usd_rate, amount_usd: amount * Number(rate.tx_usd_rate), tx_hash: result.transactionHash, network: 'coreum-testnet' }, { onConflict: 'tx_hash' })
+  const donorIndex = donationWalletIndexes[index]
+  const donor = donorAccounts[donorIndex]
+  const result = await donorClients[donorIndex].execute(donor.address, contractAddress, { donate: { project_id: projectIds[index] } }, fee, 'SoundFaith MVP donation', [{ denom: nativeDenom, amount: String(amount * 1_000_000) }])
+  const { error: donationError } = await supabase.from('donations').upsert({ project_id: projectIds[index], wallet_address: donor.address, amount_tx: amount, tx_usd_rate: txUsdRate, amount_usd: amount * txUsdRate, tx_hash: result.transactionHash, network: 'coreum-testnet' }, { onConflict: 'tx_hash' })
   if (donationError) throw donationError
-  if (amount === goalAmounts[index]) {
-    const { error: statusError } = await supabase.from('projects').update({ status: 'funded' }).eq('id', projectIds[index])
-    if (statusError) throw statusError
-  }
   console.log(`Donated ${amount} TX to project ${index + 1}/10: ${result.transactionHash}`)
 }
 

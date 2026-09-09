@@ -13,6 +13,24 @@ const nativeDenom = network === "mainnet" ? "ucore" : "utestcore";
 const feeDenom = nativeDenom;
 const donationDenom = nativeDenom;
 
+export function friendlyWalletError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  if (normalized.startsWith("this donation is larger than the project's remaining goal")) return message;
+  if (normalized.includes("donation would exceed the project goal") || normalized.includes("goal_exceeded")) return "This donation is larger than the project's remaining goal. Please choose a smaller amount.";
+  if (normalized.includes("project is not active") || normalized.includes("project is not accepting donations")) return "This project is not accepting donations right now.";
+  if (normalized.includes("donation must contain exactly one configured native coin") || normalized.includes("invalid funds")) return "The donation amount could not be sent in the expected TX format. Please try again.";
+  if (normalized.includes("contract is paused")) return "Donations are temporarily paused while the project vault is updated. Please try again shortly.";
+  if (normalized.includes("insufficient funds") || normalized.includes("insufficient balance")) return "This wallet does not have enough TX to cover the donation and network fee.";
+  if (normalized.includes("rejected") || normalized.includes("request rejected") || normalized.includes("user denied")) return "The wallet request was cancelled.";
+  if (normalized.includes("account sequence") || normalized.includes("incorrect account sequence")) return "This wallet has a pending transaction. Please wait a moment and try again.";
+  if (normalized.includes("out of gas") || normalized.includes("gas wanted") || normalized.includes("gas limit")) return "The network could not process this donation. Please try again with the current app version.";
+  if (normalized.includes("timeout") || normalized.includes("network") || normalized.includes("fetch")) return "The network did not respond. Check your connection and try again.";
+  const chainReason = message.match(/message index:\s*\d+:\s*(.*?)\s*:\s*execute wasm contract failed/i)?.[1];
+  if (chainReason) return `The TX network rejected this donation: ${chainReason}.`;
+  return "We could not complete the donation right now. Please try again.";
+}
+
 const coreumTestnet = {
   chainId,
   chainName: "Coreum Testnet",
@@ -80,20 +98,24 @@ export async function donateWithWallet(projectId: string, amountTx: number, pass
   } catch {
     throw new Error("This project is not registered on-chain yet. Please try again after the project has been approved and registered.");
   }
-  if (onChainProject.status !== "active") {
+  if (!(["active", "funded"] as const).includes(onChainProject.status as "active" | "funded")) {
     throw new Error(`This project is not accepting donations on-chain (status: ${onChainProject.status}).`);
   }
+  const requestedAmount = Math.round(amountTx * 1_000_000);
   const { address, client } = password
     ? await connectBrowserWallet(password)
     : await connectCoreumWallet();
     const chainClient = await StargateClient.connect(rpcUrl);
     const donationBalance = await chainClient.getBalance(address, donationDenom);
-    const requestedAmount = Math.round(amountTx * 1_000_000);
     if (BigInt(donationBalance.amount) < BigInt(requestedAmount)) {
       throw new Error(`This wallet has ${Number(donationBalance.amount) / 1_000_000} ${donationDenom}. Fund it with the network's native ${donationDenom} before donating.`);
     }
-    const result = await client.execute(address, contractAddress, { donate: { project_id: projectId } }, { amount: [{ denom: feeDenom, amount: '50000' }], gas: '1000000' }, 'SoundFaith donation', [{ denom: donationDenom, amount: String(requestedAmount) }]);
-  return { address, txHash: result.transactionHash };
+    try {
+      const result = await client.execute(address, contractAddress, { donate: { project_id: projectId } }, { amount: [{ denom: feeDenom, amount: '50000' }], gas: '1000000' }, 'SoundFaith donation', [{ denom: donationDenom, amount: String(requestedAmount) }]);
+      return { address, txHash: result.transactionHash };
+    } catch (error) {
+      throw new Error(friendlyWalletError(error));
+    }
 }
 
 export type OnChainProject = {

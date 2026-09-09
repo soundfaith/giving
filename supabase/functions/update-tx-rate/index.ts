@@ -16,16 +16,16 @@ const requiredEnv = (name: string) => {
   return value;
 };
 
-type PriceResponse = { coreum?: { usd?: number } };
+type PriceResponse = { tx?: { usd?: number } };
 
 async function readTxUsdRate() {
-  const endpoint = Deno.env.get("TX_PRICE_API_URL") ?? "https://api.coingecko.com/api/v3/simple/price?ids=coreum&vs_currencies=usd";
+  const endpoint = Deno.env.get("TX_PRICE_API_URL") ?? "https://api.coingecko.com/api/v3/simple/price?ids=tx&vs_currencies=usd";
   const response = await fetch(endpoint, {
     headers: Deno.env.get("TX_PRICE_API_KEY") ? { "x-api-key": requiredEnv("TX_PRICE_API_KEY") } : undefined,
   });
   if (!response.ok) throw new Error(`TX price lookup failed with status ${response.status}`);
   const body = await response.json() as PriceResponse;
-  const rate = Number(body.coreum?.usd);
+  const rate = Number(body.tx?.usd);
   if (!Number.isFinite(rate) || rate <= 0) throw new Error("TX price provider returned an invalid USD rate");
   return rate;
 }

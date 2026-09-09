@@ -114,7 +114,6 @@ const PROJECTS: Map<&str, ProjectState> = Map::new("projects");
 const DONOR_TOTALS: Map<(&str, &str), Uint128> = Map::new("donor_totals");
 const STAKING_VALIDATOR: Item<Option<String>> = Item::new("staking_validator");
 const HOLDING_FUNDS: Map<&str, Uint128> = Map::new("holding_funds");
-const CLAIM_EXPIRATION_SECONDS: u64 = 365 * 24 * 60 * 60;
 const UNBONDING_SECONDS: u64 = 7 * 24 * 60 * 60;
 
 #[derive(Error, Debug, PartialEq)]
@@ -274,9 +273,9 @@ fn project_state(api: &dyn cosmwasm_std::Api, project: ProjectInit) -> Result<Pr
     })
 }
 
-fn donate(deps: DepsMut, env: Env, info: MessageInfo, project_id: String) -> Result<Response, ContractError> {
+fn donate(deps: DepsMut, _env: Env, info: MessageInfo, project_id: String) -> Result<Response, ContractError> {
     let mut project = PROJECTS.load(deps.storage, &project_id)?;
-    if !matches!(project.status, ProjectStatus::Active) {
+    if matches!(project.status, ProjectStatus::Closed | ProjectStatus::Expired | ProjectStatus::Expiring | ProjectStatus::Unstaking) {
         return Err(ContractError::ProjectNotActive);
     }
     let native_denom = NATIVE_DENOM.load(deps.storage)?;
@@ -285,9 +284,6 @@ fn donate(deps: DepsMut, env: Env, info: MessageInfo, project_id: String) -> Res
     }
 
     let amount = info.funds[0].amount;
-    if project.raised_micro_tx + amount > project.goal_micro_tx {
-        return Err(ContractError::GoalExceeded);
-    }
     let donor_key = info.sender.as_str();
     let previous = DONOR_TOTALS
         .may_load(deps.storage, (&project_id, donor_key))?
@@ -296,11 +292,6 @@ fn donate(deps: DepsMut, env: Env, info: MessageInfo, project_id: String) -> Res
         project.donor_count += 1;
     }
     project.raised_micro_tx += amount;
-    if project.raised_micro_tx == project.goal_micro_tx {
-        project.status = ProjectStatus::Funded;
-        project.funded_at = Some(env.block.time.seconds());
-        project.claim_expires_at = Some(env.block.time.seconds().saturating_add(CLAIM_EXPIRATION_SECONDS));
-    }
     DONOR_TOTALS.save(deps.storage, (&project_id, donor_key), &(previous + amount))?;
     PROJECTS.save(deps.storage, &project_id, &project)?;
 
@@ -522,6 +513,24 @@ mod tests {
         let project = project_query(deps.as_ref(), "harbor".to_string()).unwrap();
         assert_eq!(project.raised_micro_tx, Uint128::new(250_000));
         assert_eq!(project.donor_count, 1);
+    }
+
+    #[test]
+    fn accepts_donation_above_legacy_tx_ceiling() {
+        let mut deps = mock_dependencies();
+        instantiate(deps.as_mut(), mock_env(), mock_info("owner", &[]), instantiate_msg()).unwrap();
+
+        execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("donor", &[Coin::new(1_500_000, "utestcore")]),
+            ExecuteMsg::Donate { project_id: "harbor".to_string() },
+        )
+        .unwrap();
+
+        let project = project_query(deps.as_ref(), "harbor".to_string()).unwrap();
+        assert_eq!(project.raised_micro_tx, Uint128::new(1_500_000));
+        assert_eq!(project.status, ProjectStatus::Active);
     }
 
     #[test]

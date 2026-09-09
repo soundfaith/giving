@@ -66,6 +66,9 @@ async function indexDonations() {
     }
 
     const { data: profile } = await supabase.from('profiles').select('id').eq('wallet_address', donorAddress).maybeSingle()
+    const { data: walletProfile } = profile
+      ? { data: null }
+      : await supabase.from('profile_wallets').select('user_id').eq('wallet_address', donorAddress).maybeSingle()
     const { data: rate, error: rateError } = await supabase.from('tx_exchange_rates').select('tx_usd_rate').eq('id', true).single()
     if (rateError) throw rateError
     const amountTx = Number(amountMicroTx) / 1_000_000
@@ -73,14 +76,14 @@ async function indexDonations() {
 
     const { error } = await supabase.from('donations').upsert({
       project_id: projectId,
-      profile_id: profile?.id ?? null,
+      profile_id: profile?.id ?? walletProfile?.user_id ?? null,
       wallet_address: donorAddress,
       amount_tx: amountTx,
       tx_usd_rate: txUsdRate,
       amount_usd: amountTx * txUsdRate,
       tx_hash: transaction.hash,
       network: process.env.COREUM_NETWORK === 'mainnet' ? 'coreum-mainnet' : 'coreum-testnet',
-    }, { onConflict: 'tx_hash', ignoreDuplicates: true })
+    }, { onConflict: 'tx_hash' })
     if (error) throw error
     const onChainProject = await chain.queryContractSmart(configuredContractAddress, { project: { project_id: projectId } }) as { status?: string }
     if (onChainProject.status?.toLowerCase() === 'funded') {

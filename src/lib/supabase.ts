@@ -13,6 +13,7 @@ export type Project = {
   raised: number;
   goal: number;
   donors: number;
+  status?: "active" | "funded" | "closed" | string;
   accent: string;
   featured?: boolean;
   image_urls?: string[];
@@ -106,8 +107,9 @@ export const projectRepository = {
       .in("status", ["active", "funded"])
       .order("created_at", { ascending: false });
     if (error) throw error;
-    const { data: rate } = await supabase.from("tx_exchange_rates").select("tx_usd_rate").eq("id", true).maybeSingle();
-    const txUsdRate = Number(rate?.tx_usd_rate ?? 1);
+    const { data: rate, error: rateError } = await supabase.from("tx_exchange_rates").select("tx_usd_rate").eq("id", true).single();
+    if (rateError || !rate || !Number.isFinite(Number(rate.tx_usd_rate)) || Number(rate.tx_usd_rate) <= 0) throw rateError ?? new Error("The current TX rate is unavailable.");
+    const txUsdRate = Number(rate.tx_usd_rate);
     const projectIds = (data ?? []).map((project) => project.id);
     const { data: totals, error: totalsError } =
       projectIds.length > 0
@@ -145,6 +147,7 @@ export const projectRepository = {
         category: project.category as ProjectCategory,
         raised: (chainStats?.raised ?? Number(totalsByProject.get(project.id)?.raised_tx ?? 0)) * txUsdRate,
         goal: Number(project.goal_tx),
+        status: project.status,
         donors: chainStats?.donors ?? Number(totalsByProject.get(project.id)?.donor_count ?? 0),
         accent: "photo-harbor",
         image_urls: project.image_urls ?? [],
@@ -161,8 +164,9 @@ export const projectRepository = {
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    const { data: rate } = await supabase.from("tx_exchange_rates").select("tx_usd_rate").eq("id", true).maybeSingle();
-    const txUsdRate = Number(rate?.tx_usd_rate ?? 1);
+    const { data: rate, error: rateError } = await supabase.from("tx_exchange_rates").select("tx_usd_rate").eq("id", true).single();
+    if (rateError || !rate || !Number.isFinite(Number(rate.tx_usd_rate)) || Number(rate.tx_usd_rate) <= 0) throw rateError ?? new Error("The current TX rate is unavailable.");
+    const txUsdRate = Number(rate.tx_usd_rate);
 
     const project = {
       id: data.id,
@@ -172,6 +176,7 @@ export const projectRepository = {
       description: data.description,
       category: data.category as ProjectCategory,
       goal: Number(data.goal_tx),
+      status: data.status,
       raised: 0,
       donors: 0,
       accent: "photo-harbor",

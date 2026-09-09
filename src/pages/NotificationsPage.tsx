@@ -19,7 +19,12 @@ export function NotificationsPage() {
     }
   };
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    void refresh();
+    window.addEventListener("soundfaith-data-changed", refresh);
+    window.addEventListener("focus", refresh);
+    return () => { window.removeEventListener("soundfaith-data-changed", refresh); window.removeEventListener("focus", refresh); };
+  }, []);
 
   const loadMore = async () => {
     try {

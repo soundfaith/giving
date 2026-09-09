@@ -10,7 +10,7 @@ import {
 } from "../lib/churches";
 import { identityRepository, type DonationRecord } from "../lib/supabase";
 import type { Project } from "../lib/supabase";
-import { formatMoney } from "../lib/projects";
+import { formatExchangeRate, formatMoney } from "../lib/projects";
 import { projectCategories } from "../lib/projects";
 import { Progress, ProjectVisual } from "./ProjectPrimitives";
 import {
@@ -20,7 +20,7 @@ import {
   importBrowserWallet,
   importBrowserWalletMnemonic,
 } from "../lib/walletVault";
-import { donateWithWallet, getCoreumBalance } from "../lib/wallet";
+import { donateWithWallet, friendlyWalletError, getCoreumBalance } from "../lib/wallet";
 
 export type Modal =
   | { type: "wallet" }
@@ -43,7 +43,7 @@ export function ModalLayer({
 }) {
   const [amount, setAmount] = useState(50);
   const [customAmount, setCustomAmount] = useState("50");
-  const [txUsdRate, setTxUsdRate] = useState(1);
+  const [txUsdRate, setTxUsdRate] = useState<number | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -89,11 +89,13 @@ export function ModalLayer({
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, [churchPhotos]);
   useEffect(() => {
-    if (modal.type === "donate")
+    if (modal.type === "donate") {
+      setTxUsdRate(null);
       Promise.all([getBrowserWalletAddress(), identityRepository.getTxExchangeRate()]).then(([address, rate]) => {
         setLocalWalletAvailable(Boolean(address));
         setTxUsdRate(rate.tx_usd_rate);
-      });
+      }).catch(() => setMessage("We could not load the current TX rate. Please try again."));
+    }
     if (modal.type !== "account") return;
     Promise.all([
       identityRepository.getProfile(),
@@ -155,9 +157,10 @@ export function ModalLayer({
       await identityRepository.syncProfile(result.address);
       setTransactionHash(result.txHash);
       setConfirmed(true);
+      window.dispatchEvent(new CustomEvent("soundfaith-data-changed"));
     } catch (error) {
       setMessage(
-        error instanceof Error ? error.message : "Wallet transaction failed",
+        friendlyWalletError(error),
       );
     } finally {
       setLoading(false);
@@ -848,7 +851,7 @@ export function ModalLayer({
                 You just made <em>room for more.</em>
               </h2>
               <p className="modal-copy">
-                Your {amount.toFixed(6)} TX gift (about {formatMoney(amount * txUsdRate)}) to {modal.project.church} was
+                Your {amount.toFixed(6)} TX gift (about {formatMoney(amount * (txUsdRate ?? 0))}) to {modal.project.church} was
                 submitted to the Coreum vault.
               </p>
               {transactionHash && (
@@ -906,7 +909,7 @@ export function ModalLayer({
                 />
                 <span>TX</span>
               </label>
-              <p className="modal-footnote">1 TX = {formatMoney(txUsdRate)} · Estimated value: {formatMoney(amount * txUsdRate)}</p>
+              <p className="modal-footnote">{txUsdRate === null ? "Loading current TX rate..." : `1 TX = ${formatExchangeRate(txUsdRate)} · Estimated value: ${formatExchangeRate(amount * txUsdRate)}`}</p>
               {localWalletAvailable && (
                 <input
                   className="wallet-signing-password"
@@ -921,6 +924,7 @@ export function ModalLayer({
                 onClick={donate}
                 disabled={
                   loading ||
+                  txUsdRate === null ||
                   (localWalletAvailable && !donationPassword) ||
                   !Number.isFinite(amount) ||
                   amount <= 0

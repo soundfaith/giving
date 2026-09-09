@@ -2,7 +2,8 @@ param(
   [string]$Target = 'soundfaith-wallet-devnet',
   [string]$Username = 'mnemonic',
   [string]$ProjectRef = 'gqnrvnsoyhirpvcvxapl',
-  [Parameter(Mandatory=$true)][string]$DonorMnemonicsBase64
+  [string]$DonorMnemonicsBase64,
+  [switch]$InteractiveDonors
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -26,7 +27,20 @@ $keys = supabase projects api-keys --project-ref $ProjectRef --reveal --output j
 $serviceKeyEntry = $keys | Where-Object { $_.name -eq 'service_role' } | Select-Object -First 1
 $env:SUPABASE_SERVICE_ROLE_KEY = if ($serviceKeyEntry.api_key) { $serviceKeyEntry.api_key } else { $serviceKeyEntry.key }
 $env:COREUM_OWNER_MNEMONIC = [SoundFaithMvpCredential]::Read($Target, $Username)
-$env:MVP_DONOR_MNEMONICS = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($DonorMnemonicsBase64))
+if ($InteractiveDonors) {
+  $donors = @()
+  1..5 | ForEach-Object {
+    $secureMnemonic = Read-Host "Enter donor wallet $_ mnemonic" -AsSecureString
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureMnemonic)
+    try { $donors += [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
+  }
+  $env:MVP_DONOR_MNEMONICS = $donors | ConvertTo-Json -Compress
+} elseif ($DonorMnemonicsBase64) {
+  $env:MVP_DONOR_MNEMONICS = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($DonorMnemonicsBase64))
+} else {
+  throw 'Pass -InteractiveDonors or -DonorMnemonicsBase64.'
+}
 $env:COREUM_RPC_URL = 'https://rpc.testnet-1.tx.org:443'
 $env:COREUM_STAKING_VALIDATOR = 'testcorevaloper1eegug92k2gp9c6kqjsadk3tku29sr2rsryjszy'
 

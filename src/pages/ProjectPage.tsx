@@ -37,7 +37,7 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
   const [ownerWallet, setOwnerWallet] = useState<string | null>(null);
   const [claimPassword, setClaimPassword] = useState("");
   const [claimMessage, setClaimMessage] = useState("");
-  const [txUsdRate, setTxUsdRate] = useState(1);
+  const [txUsdRate, setTxUsdRate] = useState<number | null>(null);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
 
   useEffect(() => {
@@ -92,8 +92,12 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
     };
 
     void load();
+    window.addEventListener("soundfaith-data-changed", load);
+    window.addEventListener("focus", load);
     return () => {
       active = false;
+      window.removeEventListener("soundfaith-data-changed", load);
+      window.removeEventListener("focus", load);
     };
   }, [project.id]);
 
@@ -107,7 +111,7 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
   };
 
   const donationTotal = useMemo(() => {
-    const fromChain = contractState ? (Number(contractState.raised_micro_tx ?? "0") / 1_000_000) * txUsdRate : details.raised;
+    const fromChain = contractState && txUsdRate !== null ? (Number(contractState.raised_micro_tx ?? "0") / 1_000_000) * txUsdRate : details.raised;
     return Number.isFinite(fromChain) ? fromChain : details.raised;
   }, [contractState, details.raised, txUsdRate]);
 
@@ -137,7 +141,8 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
   };
 
   const imageUrls = (details.image_urls ?? []).map((imageUrl) => optimizeProjectImageUrl(imageUrl, 420));
-  return <main className="project-route section-wrap"><a className="text-link route-back" href="#/projects">← Back to projects</a><section className="feature-layout"><div className="project-detail-gallery"><ProjectVisual project={details} featured />{imageUrls.length > 1 && <div className="project-gallery-thumbnails">{imageUrls.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt={`${details.title} project photo ${index + 1}`} />)}</div>}</div><article className="feature-panel"><div className="feature-panel-top"><span className="category-label">{details.category}</span><span className="feature-location">{details.location}</span></div><p className="feature-church">{details.church}</p><h1>{details.title}</h1><p className="feature-description">{details.description}</p><div className="funding-detail"><div className="funding-numbers"><span><strong>${donationTotal.toLocaleString()}</strong> raised</span><span>of ${details.goal.toLocaleString()}</span></div><Progress project={details} large /><div className="funding-footer"><span><b>{Math.round((donationTotal / details.goal) * 100)}%</b> funded</span><span>{contractState?.donor_count ?? details.donors} neighbors have given</span></div></div><button className="button button-coral feature-donate" onClick={onDonate}>Support this project <ArrowUpRight size={16} /></button></article></section>
+  const fundingStatus = details.status === "funded" ? "Funded" : details.status === "closed" ? "Closed" : "Active";
+  return <main className="project-route section-wrap"><a className="text-link route-back" href="#/projects">← Back to projects</a><section className="feature-layout"><div className="project-detail-gallery"><ProjectVisual project={details} featured />{imageUrls.length > 1 && <div className="project-gallery-thumbnails">{imageUrls.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt={`${details.title} project photo ${index + 1}`} />)}</div>}</div><article className="feature-panel"><div className="feature-panel-top"><span className="category-label">{details.category}</span><span className="feature-location">{details.location}</span></div><p className="feature-church">{details.church}</p><h1>{details.title}</h1><p className="feature-description">{details.description}</p><div className="funding-detail"><div className="funding-numbers"><span><strong>${donationTotal.toLocaleString()}</strong> raised</span><span>of ${details.goal.toLocaleString()}</span></div><Progress project={details} large /><div className="funding-footer"><span><b>{Math.round((donationTotal / details.goal) * 100)}%</b> funded</span><span>{contractState?.donor_count ?? details.donors} neighbors have given</span></div></div><button className={details.status === "funded" ? "button feature-donate funded-donate" : "button button-coral feature-donate"} disabled={details.status === "funded"} onClick={onDonate}>{details.status === "funded" ? "Funded" : <>Support this project <ArrowUpRight size={16} /></>}</button></article></section>
     <section className="project-detail-grid" style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "24px", marginTop: "40px" }}>
       <div className="project-detail-card" style={{ border: "1px solid var(--line)", background: "var(--white)", padding: "24px" }}>
         <p className="eyebrow" style={{ marginBottom: "12px" }}><MessagesSquare size={12} style={{ marginRight: "6px", verticalAlign: "middle" }} /> Project discussion</p>
@@ -157,6 +162,7 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
             {contractAddress && <div className="chain-record-card"><div className="chain-record-heading"><span>Donation vault</span><ShieldCheck size={15} /></div><strong className="chain-record-value">{shorten(contractAddress)}</strong><div className="chain-record-actions"><button className="icon-button" onClick={() => void copyValue(contractAddress)} title="Copy vault address" aria-label="Copy vault address">{copiedValue === contractAddress ? <Check size={14} /> : <Copy size={14} />}</button><a className="icon-button" href={explorerAddress(contractAddress)} target="_blank" rel="noreferrer" title="Open vault in explorer" aria-label="Open vault in explorer"><ExternalLink size={14} /></a></div></div>}
             {contractState?.beneficiary && <div className="chain-record-card"><div className="chain-record-heading"><span>Beneficiary</span><ShieldCheck size={15} /></div><strong className="chain-record-value">{shorten(contractState.beneficiary)}</strong><div className="chain-record-actions"><button className="icon-button" onClick={() => void copyValue(contractState.beneficiary)} title="Copy beneficiary address" aria-label="Copy beneficiary address">{copiedValue === contractState.beneficiary ? <Check size={14} /> : <Copy size={14} />}</button><a className="icon-button" href={explorerAddress(contractState.beneficiary)} target="_blank" rel="noreferrer" title="Open beneficiary in explorer" aria-label="Open beneficiary in explorer"><ExternalLink size={14} /></a></div></div>}
             {contractState?.metadata_token_id && <div className="chain-record-card"><div className="chain-record-heading"><span>Metadata token</span><span className="chain-record-status">Token</span></div><strong className="chain-record-value">{shorten(contractState.metadata_token_id)}</strong></div>}
+            <div className="chain-record-card"><div className="chain-record-heading"><span>Funding status</span><span className="chain-record-status">Project</span></div><strong className="chain-record-value chain-record-status-value">{fundingStatus}</strong></div>
             {contractState?.status && <div className="chain-record-card"><div className="chain-record-heading"><span>Contract status</span><span className="chain-record-status">Live</span></div><strong className="chain-record-value chain-record-status-value">{contractState.status}</strong></div>}
           </div>
         <div className="donation-history-section">

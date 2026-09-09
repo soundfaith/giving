@@ -65,6 +65,7 @@ export function HomePage({ projects, onProject, onDonate }: {
               <div className="card-body">
                 <div className="card-meta">
                   <span className="category-label">{project.category}</span>
+                  {project.status === "funded" && <span className="funded-badge">Funded</span>}
                   <span>{project.location}</span>
                 </div>
                 <p className="card-church">{project.church}</p>
@@ -78,8 +79,8 @@ export function HomePage({ projects, onProject, onDonate }: {
                   <Progress project={project} />
                 </div>
                 <div className="card-footer">
-                  <button className="button button-coral button-small" onClick={() => onDonate(project)}>
-                    Give now <ArrowUpRight size={14} />
+                  <button className="button button-coral button-small" disabled={project.status === "funded"} onClick={() => onDonate(project)}>
+                    {project.status === "funded" ? "Funded" : <>Give now <ArrowUpRight size={14} /></>}
                   </button>
                   <button className="text-link" onClick={() => onProject(project)}>
                     Learn more
