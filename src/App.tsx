@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Compass,
   Heart,
   Home,
   Menu,
+  Plus,
   UserRound,
   Wallet,
   X,
@@ -257,11 +257,11 @@ export default function App() {
           <span>Home</span>
         </a>
         <a
-          href="#/all-projects"
-          className={route.name === "all-projects" ? "active" : ""}
+          href="#/churches"
+          className={route.name === "churches" ? "active" : ""}
         >
-          <Compass size={17} />
-          <span>Browse</span>
+          <Plus size={17} />
+          <span>Create</span>
         </a>
         <a href="#/all-projects" className="mobile-donate">
           <Heart size={20} />
@@ -288,7 +288,7 @@ export default function App() {
       <footer className="site-footer">
         <div className="footer-brand">
           <span className="wordmark-mark">sf</span>
-          <span>Built for the people who make room.</span>
+          <span>Helping good work reach the people who need it.</span>
         </div>
         <div className="footer-bottom">
           <span>© 2026 SoundFaith</span>

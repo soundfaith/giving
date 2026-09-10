@@ -287,7 +287,9 @@ a { color:inherit; text-decoration:none; }
 	.mnemonic-reveal-actions { width:100%; justify-content:flex-end; }
 }
 .project-route { padding:45px 0 110px; }
-.route-back { display:inline-block; margin-bottom:25px; }
+.project-route-actions { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:25px; }
+.route-back { display:inline-block; }
+.project-share-control { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:9px; }
 .project-route h1, .church-route h1 { font:normal 58px/.96 'DM Serif Display',serif; letter-spacing:-.04em; }
 .church-route { min-height:520px; padding:120px 0; }
 .church-route h1 { margin-bottom:25px; }
@@ -691,8 +693,13 @@ main { animation: pageIn .5s var(--ease-out) both; }
 .featured-card .card-footer { margin-top:20px; }
 .visual-label { padding:7px 10px; border:1px solid rgba(255,255,255,.72); border-radius:999px; background:rgba(8,10,8,.88); color:#fff; box-shadow:0 3px 12px rgba(0,0,0,.28); text-shadow:0 1px 2px rgba(0,0,0,.7); }
 .funded-badge { display:inline-flex; align-items:center; padding:5px 8px; border-radius:999px; background:var(--sage); color:var(--ink); font-size:8px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
-.chain-record-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
-.chain-record-card { min-width:0; display:grid; gap:10px; padding:14px; border:1px solid var(--line); background:color-mix(in srgb, var(--sage) 34%, var(--white)); }
+.project-detail-card { border-radius:var(--radius-md); }
+.chain-record-grid { display:grid; grid-template-columns:1fr; gap:10px; }
+.chain-record-card { min-width:0; display:grid; gap:10px; padding:14px; border:1px solid var(--line); border-radius:var(--radius-sm); background:color-mix(in srgb, var(--sage) 34%, var(--white)); }
+.chain-record-address-card { grid-template-columns:minmax(0, 1fr) auto; grid-template-areas:"heading actions" "value actions"; align-items:center; gap:4px 12px; }
+.chain-record-address-card .chain-record-heading { grid-area:heading; }
+.chain-record-address-card .chain-record-value { grid-area:value; }
+.chain-record-address-card .chain-record-actions { grid-area:actions; }
 .chain-record-heading { display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
 .chain-record-heading svg { color:var(--coral); }
 .chain-record-value { min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:12px; letter-spacing:.02em; }
@@ -703,13 +710,14 @@ main { animation: pageIn .5s var(--ease-out) both; }
 .donation-history-section { border-top:1px solid var(--line); margin-top:20px; padding-top:20px; }
 .donation-history-section .eyebrow { margin-bottom:12px; }
 .donation-history-list { display:grid; gap:8px; }
-.donation-history-card { display:grid; grid-template-columns:30px minmax(0, 1fr) auto auto; gap:10px; align-items:center; padding:11px; border:1px solid var(--line); background:var(--white); }
+.donation-history-card { display:grid; grid-template-columns:30px minmax(0, 1fr) auto auto; gap:10px; align-items:center; padding:11px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--white); }
 .donation-history-icon { display:grid; place-items:center; width:30px; height:30px; background:var(--sage); color:var(--coral-deep); }
 .donation-history-main { display:grid; gap:3px; min-width:0; }
 .donation-history-main strong { font-size:11px; }
 .donation-history-main span { color:var(--muted); font-size:9px; }
 .donation-history-value { color:var(--muted); font-size:10px; white-space:nowrap; }
 @media (max-width: 760px) {
+	.project-route-actions { margin-bottom:20px; }
 	.chain-record-grid { grid-template-columns:1fr; }
 	.donation-history-card { grid-template-columns:30px minmax(0, 1fr) 30px; }
 	.donation-history-value { display:none; }
@@ -746,3 +754,8 @@ main { animation: pageIn .5s var(--ease-out) both; }
 .project-card .card-donate:disabled:hover { background:var(--sage); transform:none; }
 .feature-donate.funded-donate, .feature-donate.funded-donate:hover { background:var(--sage); color:var(--ink); box-shadow:none; cursor:default; opacity:1; transform:none; }
 .project-card { cursor:pointer; }
+.project-section-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.project-section-heading .eyebrow { margin:0; }
+.project-section-icon { width:22px; height:22px; color:var(--coral); stroke-width:2; }
+@keyframes sheetSlideDown { from { transform:translateY(0); opacity:1; } to { transform:translateY(100%); opacity:0; } }
+.modal-closing { animation:sheetSlideDown .22s var(--ease-out) both !important; pointer-events:none; }

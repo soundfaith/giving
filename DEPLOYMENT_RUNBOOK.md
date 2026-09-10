@@ -16,7 +16,7 @@ This runbook is for the repository's TX testnet and Supabase deployment workflow
 - RPC: `https://rpc.testnet-1.tx.org:443`
 - Native denom: `utestcore`
 - Staking validator: `testcorevaloper1eegug92k2gp9c6kqjsadk3tku29sr2rsryjszy`
-- Contract: `testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg`
+- Contract: `testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey`
 - Code ID: `3939`
 - Owner/deployer wallet: `testcore15xhvchxtkstyhqvpl8pdcfkj69khfp0t8rmhxv`
 

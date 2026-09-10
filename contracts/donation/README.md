@@ -24,7 +24,7 @@ This repository now includes a starter CosmWasm implementation in `src/lib.rs`. 
 {"set_project_status":{"project_id":"project-uuid","status":"active"}}
 ```
 
-The contract stores its native denomination at instantiate/migrate time: `utestcore` on testnet and `ucore` on mainnet. The current testnet deployment is code ID `3939` at `testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg`. It keeps funds in its own account/staking delegation, rejects donations above the goal, and emits the event attributes used by the offline-replayable indexer:
+The contract stores its native denomination at instantiate/migrate time: `utestcore` on testnet and `ucore` on mainnet. The current testnet deployment is code ID `3943` at `testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey`. It keeps funds in its own account/staking delegation, rejects donations above the goal, and emits the event attributes used by the manual sync flow:
 
 - `action=donation_received`
 - `project_id`

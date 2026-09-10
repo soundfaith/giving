@@ -8,7 +8,7 @@ SoundFaith is a church-project fundraising app focused on sound, AV, accessibili
 - Owner/deployer wallet: `testcore15xhvchxtkstyhqvpl8pdcfkj69khfp0t8rmhxv`
 - HD path: `m/44'/990'/0'/0/0`
 - Metadata token: `sfaith-testcore15xhvchxtkstyhqvpl8pdcfkj69khfp0t8rmhxv`
-- Vault contract: `testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg`
+- Vault contract: `testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey`
 - Contract code ID: `3939`
 - Validator: `testcorevaloper1eegug92k2gp9c6kqjsadk3tku29sr2rsryjszy`
 - Custody: native `utestcore` is held/staked by the CosmWasm vault, not by the metadata token
@@ -79,7 +79,7 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_COREUM_NETWORK=testnet
 VITE_COREUM_RPC_URL=https://rpc.testnet-1.tx.org:443
-VITE_COREUM_DONATION_CONTRACT=testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg
+VITE_COREUM_DONATION_CONTRACT=testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey
 ```
 
 Server-only worker/deployment values belong in the worker environment, not the frontend:
@@ -90,7 +90,7 @@ COREUM_RPC_URL=https://rpc.testnet-1.tx.org:443
 COREUM_CHAIN_ID=coreum-testnet-1
 COREUM_BECH32_PREFIX=testcore
 COREUM_DERIVATION_PATH=m/44'/990'/0'/0/0
-COREUM_DONATION_CONTRACT=testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg
+COREUM_DONATION_CONTRACT=testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey
 SUPABASE_SERVICE_ROLE_KEY=
 ```
 

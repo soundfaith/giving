@@ -19,7 +19,7 @@ The beneficiary is therefore fixed on-chain when registration occurs, before don
 
 The active testnet contract is:
 
-`testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg`
+`testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey`
 
 It was deployed as code ID `3939` on TX testnet (`coreum-testnet-1`).
 

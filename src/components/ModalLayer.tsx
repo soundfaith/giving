@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Check, CircleHelp, Wallet, X } from "lucide-react";
 import {
@@ -83,6 +83,9 @@ export function ModalLayer({
   const [churchPhotoUrls, setChurchPhotoUrls] = useState<string[]>([]);
   const [churchStep, setChurchStep] = useState(1);
   const [churchPrimaryPhoto, setChurchPrimaryPhoto] = useState(0);
+  const [closing, setClosing] = useState(false);
+  const touchStartY = useRef<number | null>(null);
+  const touchDeltaY = useRef(0);
   useEffect(() => {
     const urls = churchPhotos.map((photo) => URL.createObjectURL(photo));
     setChurchPhotoUrls(urls);
@@ -319,6 +322,11 @@ export function ModalLayer({
     profile?.wallet_address ??
     (isWalletSetupModal ? modal.walletAddress : null);
   const isWalletSetup = isWalletSetupModal && !rememberedWalletAddress;
+  const swipeClose = () => {
+    if (isWalletSetupModal) return;
+    setClosing(true);
+    window.setTimeout(close, 220);
+  };
   return createPortal(
     <div
       className="modal-backdrop"
@@ -329,10 +337,13 @@ export function ModalLayer({
       }}
     >
       <section
-        className={isWalletSetupModal ? "modal wallet-setup-modal" : "modal"}
+        className={`${isWalletSetupModal ? "modal wallet-setup-modal" : "modal"}${closing ? " modal-closing" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
+        onTouchStart={(event) => { touchStartY.current = event.touches[0]?.clientY ?? null; touchDeltaY.current = 0; }}
+        onTouchMove={(event) => { if (touchStartY.current !== null) { touchDeltaY.current = Math.max(0, (event.touches[0]?.clientY ?? touchStartY.current) - touchStartY.current); } }}
+        onTouchEnd={() => { if (touchDeltaY.current > 80) swipeClose(); touchStartY.current = null; touchDeltaY.current = 0; }}
       >
         {!isWalletSetupModal && (
           <button

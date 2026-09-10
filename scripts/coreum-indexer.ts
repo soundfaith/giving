@@ -85,8 +85,8 @@ async function indexDonations() {
       network: process.env.COREUM_NETWORK === 'mainnet' ? 'coreum-mainnet' : 'coreum-testnet',
     }, { onConflict: 'tx_hash' })
     if (error) throw error
-    const onChainProject = await chain.queryContractSmart(configuredContractAddress, { project: { project_id: projectId } }) as { status?: string }
-    if (onChainProject.status?.toLowerCase() === 'funded') {
+    const onChainProject = await chain.queryContractSmart(configuredContractAddress, { project: { project_id: projectId } }) as { goal_micro_tx?: string; raised_micro_tx?: string }
+    if (BigInt(onChainProject.raised_micro_tx ?? '0') >= BigInt(onChainProject.goal_micro_tx ?? '0')) {
       const { error: projectStatusError } = await supabase.from('projects').update({ status: 'funded' }).eq('id', projectId).eq('status', 'active')
       if (projectStatusError) throw projectStatusError
     }
