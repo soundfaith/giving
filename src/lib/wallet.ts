@@ -28,7 +28,7 @@ export function friendlyWalletError(error: unknown) {
   if (normalized.includes("timeout") || normalized.includes("network") || normalized.includes("fetch")) return "The network did not respond. Check your connection and try again.";
   const chainReason = message.match(/message index:\s*\d+:\s*(.*?)\s*:\s*execute wasm contract failed/i)?.[1];
   if (chainReason) return `The TX network rejected this donation: ${chainReason}.`;
-  return "We could not complete the donation right now. Please try again.";
+  return `Blockchain error: ${message}`;
 }
 
 const coreumTestnet = {
@@ -110,12 +110,8 @@ export async function donateWithWallet(projectId: string, amountTx: number, pass
     if (BigInt(donationBalance.amount) < BigInt(requestedAmount)) {
       throw new Error(`This wallet has ${Number(donationBalance.amount) / 1_000_000} ${donationDenom}. Fund it with the network's native ${donationDenom} before donating.`);
     }
-    try {
-      const result = await client.execute(address, contractAddress, { donate: { project_id: projectId } }, { amount: [{ denom: feeDenom, amount: '50000' }], gas: '1000000' }, 'SoundFaith donation', [{ denom: donationDenom, amount: String(requestedAmount) }]);
-      return { address, txHash: result.transactionHash };
-    } catch (error) {
-      throw new Error(friendlyWalletError(error));
-    }
+    const result = await client.execute(address, contractAddress, { donate: { project_id: projectId } }, { amount: [{ denom: feeDenom, amount: '50000' }], gas: '1000000' }, 'SoundFaith donation', [{ denom: donationDenom, amount: String(requestedAmount) }]);
+    return { address, txHash: result.transactionHash };
 }
 
 export type OnChainProject = {
