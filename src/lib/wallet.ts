@@ -7,7 +7,11 @@ const chainId = import.meta.env.VITE_COREUM_CHAIN_ID ?? "coreum-testnet-1";
 const rpcUrl =
   import.meta.env.VITE_COREUM_RPC_URL ??
   "https://rpc.testnet-1.tx.org:443";
-const contractAddress = import.meta.env.VITE_COREUM_DONATION_CONTRACT ?? "";
+const currentTestnetContract = "testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey";
+const configuredContractAddress = import.meta.env.VITE_COREUM_DONATION_CONTRACT ?? currentTestnetContract;
+const contractAddress = configuredContractAddress === "testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg"
+  ? currentTestnetContract
+  : configuredContractAddress;
 const network = import.meta.env.VITE_COREUM_NETWORK ?? "testnet";
 const nativeDenom = network === "mainnet" ? "ucore" : "utestcore";
 const feeDenom = nativeDenom;
@@ -95,8 +99,9 @@ export async function donateWithWallet(projectId: string, amountTx: number, pass
   let onChainProject: OnChainProject;
   try {
     onChainProject = await getProjectOnChain(projectId);
-  } catch {
-    throw new Error("This project is not registered on-chain yet. Please try again after the project has been approved and registered.");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to read this project's on-chain record: ${detail}`);
   }
   if (!(["active", "funded"] as const).includes(onChainProject.status as "active" | "funded")) {
     throw new Error(`This project is not accepting donations on-chain (status: ${onChainProject.status}).`);
