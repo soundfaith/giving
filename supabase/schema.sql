@@ -114,6 +114,11 @@ on conflict (id) do nothing;
 create index if not exists donations_project_id_idx on public.donations(project_id);
 create index if not exists donations_wallet_address_idx on public.donations(wallet_address);
 
+create or replace view public.project_donation_history as
+select id, project_id, amount_tx, tx_usd_rate, amount_usd, tx_hash, network, created_at
+from public.donations;
+grant select on public.project_donation_history to anon, authenticated;
+
 alter table public.identities enable row level security;
 alter table public.profiles enable row level security;
 alter table public.profile_wallets enable row level security;
@@ -125,8 +130,8 @@ alter table public.project_likes enable row level security;
 alter table public.project_shares enable row level security;
 alter table public.indexer_state enable row level security;
 
-create policy "public can read active projects" on public.projects
-  for select using (status = 'active');
+create policy "public can read public project statuses" on public.projects
+  for select using (status in ('active', 'funded', 'closed'));
 
 create policy "church owners can read organizations" on public.church_organizations
   for select using (owner_id = auth.uid());
@@ -209,5 +214,5 @@ select
   count(d.id)::int as donor_count
 from public.projects p
 left join public.donations d on d.project_id = p.id
-where p.status = 'active'
+where p.status in ('active', 'funded', 'closed')
 group by p.id;

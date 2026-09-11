@@ -145,7 +145,7 @@ export const projectRepository = {
     const { data, error } = await supabase
       .from("projects")
       .select("*")
-      .in("status", ["active", "funded"])
+      .in("status", ["active", "funded", "closed"])
       .order("created_at", { ascending: false });
     if (error) throw error;
     const { data: rate, error: rateError } = await supabase.from("tx_exchange_rates").select("tx_usd_rate").eq("id", true).single();
@@ -261,8 +261,8 @@ export const projectRepository = {
   async getDonationHistory(projectId: string): Promise<DonationRecord[]> {
     if (!supabase) return [];
     const { data, error } = await supabase
-      .from("donations")
-      .select("id, project_id, amount_tx, tx_usd_rate, amount_usd, tx_hash, network, created_at, wallet_address")
+      .from("project_donation_history")
+      .select("id, project_id, amount_tx, tx_usd_rate, amount_usd, tx_hash, network, created_at")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false });
     if (error) throw error;

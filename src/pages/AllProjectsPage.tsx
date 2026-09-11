@@ -1,8 +1,8 @@
 import React from "react";
 import { Search, Sparkles, X } from "lucide-react";
 import type { Project } from "../lib/supabase";
-import { categories, formatMoney } from "../lib/projects";
-import { Progress, ProjectVisual } from "../components/ProjectPrimitives";
+import { categories } from "../lib/projects";
+import { ProjectCard } from "../components/ProjectCard";
 
 export function AllProjectsPage({ projects, onProject, onDonate }: {
   projects: Project[];
@@ -17,6 +17,10 @@ export function AllProjectsPage({ projects, onProject, onDonate }: {
     const haystack = `${project.title} ${project.church} ${project.location} ${project.category}`.toLowerCase();
     return matchesCategory && haystack.includes(query.toLowerCase());
   });
+  const activeProjects = visibleProjects.filter((project) => project.status !== "funded" && project.status !== "closed");
+  const fundedProjects = visibleProjects.filter((project) => project.status === "funded");
+  const completedProjects = visibleProjects.filter((project) => project.status === "closed");
+  const renderCards = (items: Project[], compact = false) => <div className={compact ? "project-grid project-grid-compact" : "project-grid"}>{items.map((project, index) => <ProjectCard key={project.id} project={project} index={index} compact={compact} onDetails={() => onProject(project)} onDonate={() => onDonate(project)} />)}</div>;
 
   return (
     <main id="top">
@@ -62,40 +66,9 @@ export function AllProjectsPage({ projects, onProject, onDonate }: {
           </label>
         </div>
 
-        <div className="project-grid">
-          {visibleProjects.map((project, index) => (
-            <article key={project.id} className="project-card" style={{ animationDelay: `${index * 70}ms` }} onClick={() => onProject(project)}>
-              <ProjectVisual project={project} />
-              <div className="project-card-body">
-                <div className="card-meta">
-                  <span className="category-label">{project.category}</span>
-                  <span>{project.location}</span>
-                </div>
-                <p className="card-church">{project.church}</p>
-                <h3>{project.title}</h3>
-                <p className="card-description">{project.description}</p>
-                <div className="card-funding">
-                  <div className="card-funding-copy">
-                    <strong>{formatMoney(project.raised)}</strong>
-                    <span>of {formatMoney(project.goal)}</span>
-                  </div>
-                  <Progress project={project} />
-                </div>
-                <div className="card-footer">
-                  <span>{project.donors} donors</span>
-                  <div className="card-actions">
-                    <button className="card-details" onClick={(event) => { event.stopPropagation(); onProject(project); }}>
-                      View project
-                    </button>
-                    <button className={project.status === "funded" ? "card-donate funded-donate" : "card-donate"} disabled={project.status === "funded"} onClick={(event) => { event.stopPropagation(); onDonate(project); }}>
-                      {project.status === "funded" ? "Funded" : "Donate"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
+        {activeProjects.length > 0 && <section className="catalog-group"><div className="catalog-group-heading"><div><p className="eyebrow">Seeking support</p><h2>Projects to<br /><em>build together.</em></h2></div><span>{activeProjects.length}</span></div>{renderCards(activeProjects)}</section>}
+        {fundedProjects.length > 0 && <section className="catalog-group catalog-group-compact"><div className="catalog-group-heading"><div><p className="eyebrow">Goal reached</p><h2>Fully<br /><em>funded.</em></h2></div><span>{fundedProjects.length}</span></div>{renderCards(fundedProjects, true)}</section>}
+        {completedProjects.length > 0 && <section className="catalog-group catalog-group-compact"><div className="catalog-group-heading"><div><p className="eyebrow">Impact archive</p><h2>Completed<br /><em>projects.</em></h2></div><span>{completedProjects.length}</span></div>{renderCards(completedProjects, true)}</section>}
 
         {visibleProjects.length === 0 && (
           <div className="empty-state">

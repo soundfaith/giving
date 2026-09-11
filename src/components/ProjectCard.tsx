@@ -3,14 +3,14 @@ import type { Project } from "../lib/supabase";
 import { formatMoney } from "../lib/projects";
 import { Progress, ProjectVisual } from "./ProjectPrimitives";
 
-export function ProjectCard({ project, index, onDetails, onDonate }: { project: Project; index: number; onDetails: () => void; onDonate: () => void }) {
-  return <article className="project-card" style={{ animationDelay: `${index * 70}ms` }}>
+export function ProjectCard({ project, index, onDetails, onDonate, compact = false }: { project: Project; index: number; onDetails: () => void; onDonate: () => void; compact?: boolean }) {
+  return <article className={compact ? "project-card project-card-compact" : "project-card"} style={{ animationDelay: `${index * 70}ms` }}>
     <ProjectVisual project={project} />
     <div className="project-card-body">
-      <div className="card-meta"><span className="category-label">{project.category}</span><span>{project.location}</span></div>
+      <div className="card-meta"><span className="category-label">{project.category}</span>{project.status === "funded" && <span className="funded-badge">Funded</span>}{project.status === "closed" && <span className="completed-badge">Completed</span>}<span>{project.location}</span></div>
       <p className="card-church">{project.church}</p><h3>{project.title}</h3><p className="card-description">{project.description}</p>
       <div className="card-funding"><div className="card-funding-copy"><strong>{formatMoney(project.raised)}</strong><span>of {formatMoney(project.goal)}</span></div><Progress project={project} /></div>
-      <div className="card-footer"><span>{project.donors} donors</span><div className="card-actions"><button className="card-details" onClick={onDetails}>View project</button><button className={project.status === "funded" ? "card-donate funded-donate" : "card-donate"} disabled={project.status === "funded"} onClick={onDonate}>{project.status === "funded" ? "Funded" : <>Donate <ArrowUpRight size={14} /></>}</button></div></div>
+      <div className="card-footer"><span>{project.donors} donors</span><div className="card-actions"><button className="card-details" onClick={onDetails}>{project.status === "closed" ? "View impact" : "View project"}</button>{project.status !== "closed" && <button className={project.status === "funded" ? "card-donate funded-donate" : "card-donate"} disabled={project.status === "funded"} onClick={onDonate}>{project.status === "funded" ? "Funded" : <>Donate <ArrowUpRight size={14} /></>}</button>}</div></div>
     </div>
   </article>;
 }

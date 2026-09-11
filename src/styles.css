@@ -415,6 +415,7 @@ main { animation: pageIn .5s var(--ease-out) both; }
 .project-card:hover { transform: translateY(-7px); }
 .project-card:hover .project-visual { box-shadow: var(--shadow-soft); }
 .project-card-body { padding-inline: 4px; }
+.project-card-body h3 { min-height:52px; }
 .card-donate { border-radius: 999px; transition: transform .2s var(--ease-out), color .2s var(--ease-out), background-color .2s var(--ease-out); }
 .card-donate:hover { transform: translateX(3px); }
 .promise-section { padding-top: 72px; padding-bottom: 80px; }
@@ -516,6 +517,17 @@ main { animation: pageIn .5s var(--ease-out) both; }
 .inbox-tab:hover, .inbox-tab.active { border-color:var(--ink); background:var(--ink); color:var(--white); }
 .notification-list { padding-top:18px; }
 .notification-card.unread { border-left:3px solid var(--coral); }
+.catalog-group { margin-top:58px; }
+.catalog-group + .catalog-group { border-top:1px solid var(--line); padding-top:58px; }
+.catalog-group-heading { display:flex; align-items:end; justify-content:space-between; gap:20px; margin-bottom:28px; }
+.catalog-group-heading h2 { font:normal 42px/1 'DM Serif Display',serif; letter-spacing:-.025em; }
+.catalog-group-heading > span { color:var(--muted); font-size:10px; font-weight:800; }
+.project-grid-compact { grid-template-columns:repeat(4, minmax(0, 1fr)); gap:24px 16px; }
+.project-card-compact .project-visual { aspect-ratio:1.55; }
+.project-card-compact .project-card-body { padding:18px 18px 18px; }
+.project-card-compact .project-card-body h3 { min-height:42px; font-size:21px; }
+.project-card-compact .card-description { min-height:32px; font-size:9px; }
+.completed-badge { color:#4e7550; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
 .notification-row { transition:color .2s var(--ease-out), background-color .2s var(--ease-out); }
 .notification-row:hover { background:color-mix(in srgb, var(--sage) 18%, transparent); padding-inline:4px; }
 .notification-title { display:block; font-size:13px; font-weight:700; margin-bottom:6px; }
@@ -687,7 +699,7 @@ main { animation: pageIn .5s var(--ease-out) both; }
 .project-card { padding:0; border:1px solid var(--line); border-radius:var(--radius-md); overflow:hidden; background:var(--white); box-shadow:var(--shadow-soft); }
 .project-card .project-visual, .featured-card .project-visual { aspect-ratio:4 / 3; min-height:0; }
 .project-card-body { padding:24px 22px 22px; }
-.project-card-body .card-description { min-height:0; margin-bottom:20px; }
+.project-card-body .card-description { min-height:34px; margin-bottom:20px; }
 .project-card-body .card-footer { margin-top:20px; }
 .projects-heading h1 { font:normal 54px/.96 'DM Serif Display',serif; letter-spacing:-.04em; margin:0; }
 .projects-heading h1 em { color:var(--coral); font-style:italic; }

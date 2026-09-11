@@ -37,16 +37,17 @@ function hotScore(project: Project, now: number) {
 }
 
 export function selectFeaturedProjects(projects: Project[], count = 3, now = Date.now()) {
+  const activeProjects = projects.filter((project) => project.status !== "funded" && project.status !== "closed");
   const selected: Project[] = [];
   const add = (project?: Project) => {
     if (project && !selected.some((item) => item.id === project.id) && selected.length < count) selected.push(project);
   };
-  const newest = projects.filter((project) => isNewProject(project, now)).sort((left, right) => Date.parse(right.createdAt ?? "") - Date.parse(left.createdAt ?? ""))[0];
-  const nearFunded = projects.filter((project) => project.status !== "funded").sort((left, right) => fundingProgress(right) - fundingProgress(left))[0];
-  const hottest = [...projects].sort((left, right) => hotScore(right, now) - hotScore(left, now))[0];
+  const newest = activeProjects.filter((project) => isNewProject(project, now)).sort((left, right) => Date.parse(right.createdAt ?? "") - Date.parse(left.createdAt ?? ""))[0];
+  const nearFunded = activeProjects.sort((left, right) => fundingProgress(right) - fundingProgress(left))[0];
+  const hottest = [...activeProjects].sort((left, right) => hotScore(right, now) - hotScore(left, now))[0];
   add(newest);
   add(nearFunded);
   add(hottest);
-  [...projects].sort((left, right) => hotScore(right, now) - hotScore(left, now)).forEach(add);
+  [...activeProjects].sort((left, right) => hotScore(right, now) - hotScore(left, now)).forEach(add);
   return selected;
 }
