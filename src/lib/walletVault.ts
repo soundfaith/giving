@@ -104,6 +104,10 @@ function setActiveWallet(id: string) {
   window.localStorage.setItem(activeWalletKey, id);
 }
 
+function displayWalletName(name?: string) {
+  return name === "Coreum wallet" ? "TX wallet" : name ?? "TX wallet";
+}
+
 export function clearActiveBrowserWallet() {
   window.localStorage.removeItem(activeWalletKey);
 }
@@ -113,21 +117,21 @@ export type BrowserWallet = { id: string; name: string; address: string; created
 export async function getBrowserWallets(ownerEmail?: string): Promise<BrowserWallet[]> {
   return (await listVaults())
     .filter((wallet) => !ownerEmail || wallet.ownerEmail === ownerEmail)
-    .map((wallet) => ({ id: wallet.id, name: wallet.name ?? "Coreum wallet", address: wallet.address, createdAt: wallet.createdAt }));
+    .map((wallet) => ({ id: wallet.id, name: displayWalletName(wallet.name), address: wallet.address, createdAt: wallet.createdAt }));
 }
 
 export async function switchBrowserWallet(id: string) {
   const wallet = await readVault(id);
   if (!wallet) throw new Error("That wallet is not available on this device.");
   setActiveWallet(wallet.id);
-  return { id: wallet.id, name: wallet.name ?? "Coreum wallet", address: wallet.address };
+  return { id: wallet.id, name: displayWalletName(wallet.name), address: wallet.address };
 }
 
 export async function activateBrowserWalletForAddress(address: string) {
   const wallet = (await listVaults()).find((item) => item.address === address);
   if (!wallet) return null;
   setActiveWallet(wallet.id);
-  return { id: wallet.id, name: wallet.name ?? "Coreum wallet", address: wallet.address };
+  return { id: wallet.id, name: displayWalletName(wallet.name), address: wallet.address };
 }
 
 export async function claimBrowserWalletForEmail(address: string, ownerEmail: string) {
@@ -161,7 +165,7 @@ export async function removeBrowserWallet(id: string) {
 
 export async function getActiveBrowserWallet() {
   const wallet = await readVault();
-  return wallet ? { id: wallet.id, name: wallet.name ?? "Coreum wallet", address: wallet.address } : null;
+  return wallet ? { id: wallet.id, name: displayWalletName(wallet.name), address: wallet.address } : null;
 }
 
 export async function hasBrowserWallet() {
@@ -172,13 +176,13 @@ export async function getBrowserWalletAddress() {
   return (await readVault())?.address ?? null;
 }
 
-export async function createBrowserWallet(password: string, name = "Coreum wallet", ownerEmail?: string) {
+export async function createBrowserWallet(password: string, name = "TX wallet", ownerEmail?: string) {
   if (password.length < 12) throw new Error("Use a wallet password with at least 12 characters.");
   const wallet = await DirectSecp256k1HdWallet.generate(12, walletOptions());
   const [{ address }] = await wallet.getAccounts();
   const serialization = await wallet.serialize(password);
   const id = `wallet-${crypto.randomUUID()}`;
-  await writeVault({ id, name: name.trim() || "Coreum wallet", ownerEmail, address, serialization, createdAt: new Date().toISOString() });
+  await writeVault({ id, name: name.trim() || "TX wallet", ownerEmail, address, serialization, createdAt: new Date().toISOString() });
   setActiveWallet(id);
   return { id, address };
 }
@@ -245,7 +249,7 @@ export async function verifyBiometricUnlock() {
 export async function exportBrowserWallet() {
   const vault = await readVault();
   if (!vault) throw new Error("No local wallet is configured on this device.");
-  const blob = new Blob([JSON.stringify({ format: "soundfaith-coreum-wallet-v1", chainId, name: vault.name ?? "Coreum wallet", address: vault.address, serialization: vault.serialization }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ format: "soundfaith-coreum-wallet-v1", chainId, name: displayWalletName(vault.name), address: vault.address, serialization: vault.serialization }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -257,7 +261,7 @@ export async function exportBrowserWallet() {
 export async function importBrowserWallet(file: File, expectedAddress?: string | null, name?: string, ownerEmail?: string) {
   const parsed = JSON.parse(await file.text()) as { format?: string; name?: string; address?: string; serialization?: string };
   if (parsed.format !== "soundfaith-coreum-wallet-v1" || !parsed.address || !parsed.serialization) throw new Error("This is not a SoundFaith wallet backup.");
-  if (expectedAddress && parsed.address !== expectedAddress) throw new Error("This backup belongs to a different wallet. Select the backup for the remembered Coreum address.");
+  if (expectedAddress && parsed.address !== expectedAddress) throw new Error("This backup belongs to a different wallet. Select the backup for the remembered TX address.");
   const id = `wallet-${crypto.randomUUID()}`;
   await writeVault({ id, name: name?.trim() || parsed.name || "Imported wallet", ownerEmail, address: parsed.address, serialization: parsed.serialization, createdAt: new Date().toISOString() });
   setActiveWallet(id);
@@ -268,7 +272,7 @@ export async function importBrowserWalletMnemonic(mnemonic: string, password: st
   if (password.length < 12) throw new Error("Use a wallet password with at least 12 characters.");
   const wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic.trim(), walletOptions());
   const [{ address }] = await wallet.getAccounts();
-  if (expectedAddress && address !== expectedAddress) throw new Error("This mnemonic belongs to a different wallet. Check the remembered Coreum address and try again.");
+  if (expectedAddress && address !== expectedAddress) throw new Error("This mnemonic belongs to a different wallet. Check the remembered TX address and try again.");
   const serialization = await wallet.serialize(password);
   const id = `wallet-${crypto.randomUUID()}`;
   await writeVault({ id, name: name.trim() || "Recovered wallet", ownerEmail, address, serialization, createdAt: new Date().toISOString() });

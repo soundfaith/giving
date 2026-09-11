@@ -16,7 +16,7 @@ export type TokenMetadata = {
 export const coreumTestnet: TokenMetadata = {
   symbol: "TX",
   denom: "utestcore",
-  network: "Coreum testnet",
+  network: "TX testnet",
   decimals: 6,
 };
 

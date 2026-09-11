@@ -37,7 +37,7 @@ export function friendlyWalletError(error: unknown) {
 
 const coreumTestnet = {
   chainId,
-  chainName: "Coreum Testnet",
+  chainName: "TX Testnet",
   rpc: rpcUrl,
   rest:
     import.meta.env.VITE_COREUM_REST_URL ??

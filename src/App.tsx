@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Bell,
   Heart,
   Home,
   Menu,
@@ -17,8 +18,7 @@ import { ChurchPage } from "./pages/ChurchPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { ReviewPage } from "./pages/ReviewPage";
 import { AdminPage } from "./pages/AdminPage";
-import { NotificationsPage } from "./pages/NotificationsPage";
-import { ActivitiesPage } from "./pages/ActivitiesPage";
+import { InboxPage } from "./pages/InboxPage";
 import { TermsPage } from "./pages/TermsPage";
 import { projects as fallbackProjects } from "./lib/projects";
 import {
@@ -45,6 +45,7 @@ function readRoute() {
   if (path === "admin") return { name: "admin" as const };
   if (path === "notifications") return { name: "notifications" as const };
   if (path === "activities") return { name: "activities" as const };
+  if (path === "inbox") return { name: "inbox" as const };
   return { name: "home" as const };
 }
 
@@ -200,10 +201,8 @@ export default function App() {
       <TermsPage />
     ) : route.name === "profile" ? (
       <ProfilePage />
-    ) : route.name === "notifications" ? (
-      <NotificationsPage />
-    ) : route.name === "activities" ? (
-      <ActivitiesPage />
+    ) : route.name === "notifications" || route.name === "activities" || route.name === "inbox" ? (
+      <InboxPage />
     ) : route.name === "review" ? (
       <ReviewPage />
     ) : route.name === "admin" ? (
@@ -228,7 +227,7 @@ export default function App() {
             {authUser ? "Browse" : "Browse Projects"}
           </a>
           <a href="#/churches" onClick={() => setMobileMenu(false)}>Create Project</a>
-          {authUser && <a href="#/activities" onClick={() => setMobileMenu(false)}>Activities</a>}
+          {authUser && <a href="#/inbox" onClick={() => setMobileMenu(false)}>Inbox</a>}
         </nav>
         <a
           className="button button-dark header-wallet"
@@ -268,11 +267,11 @@ export default function App() {
           <span>Donate</span>
         </a>
         <a
-          href="#/activities"
-          className={route.name === "activities" ? "active" : ""}
+          href="#/inbox"
+          className={route.name === "inbox" || route.name === "activities" || route.name === "notifications" ? "active" : ""}
         >
-          <Wallet size={17} />
-          <span>Activities</span>
+          <Bell size={17} />
+          <span>Inbox</span>
         </a>
         <a
           href="#/profile"

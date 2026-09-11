@@ -239,7 +239,7 @@ export function ModalLayer({
     try {
       if (walletPassword !== walletPasswordConfirmation)
         throw new Error("Wallet passwords do not match.");
-      const { address } = await createBrowserWallet(walletPassword, "Coreum wallet", ownerEmail ?? undefined);
+      const { address } = await createBrowserWallet(walletPassword, "TX wallet", ownerEmail ?? undefined);
       await identityRepository.syncProfile(address);
       setProfile((current) => ({
         ...(current ?? {}),
@@ -356,7 +356,7 @@ export function ModalLayer({
         )}
         {isWalletSetupModal && rememberedWalletAddress && (
           <div className="wallet-onboarding">
-            <p className="eyebrow">Reconnect your Coreum wallet</p>
+            <p className="eyebrow">Reconnect your TX wallet</p>
             <h2 id="modal-title">
               Choose how to <em>continue.</em>
             </h2>
@@ -383,6 +383,12 @@ export function ModalLayer({
                   onClick={() => setWalletSetupMode("create")}
                 >
                   3. Create new wallet
+                </button>
+                <button
+                  className="button button-dark modal-action"
+                  onClick={() => void signOut()}
+                >
+                  Browse as guest
                 </button>
               </div>
             )}
@@ -477,11 +483,11 @@ export function ModalLayer({
             <h2 id="modal-title">
               {rememberedWalletAddress ? (
                 <>
-                  Reconnect your <em>Coreum wallet.</em>
+                  Reconnect your <em>TX wallet.</em>
                 </>
               ) : (
                 <>
-                  Create your <em>Coreum wallet.</em>
+                  Create your <em>TX wallet.</em>
                 </>
               )}
             </h2>
@@ -601,7 +607,7 @@ export function ModalLayer({
             <div className="account-details">
               <span>Email</span>
               <strong>{profile?.email ?? "Loading..."}</strong>
-              <span>Coreum wallet</span>
+              <span>TX wallet</span>
               <strong className="account-wallet-address">
                 {profile?.wallet_address ?? "Not configured"}
               </strong>
@@ -639,7 +645,7 @@ export function ModalLayer({
                   onClick={createWallet}
                   disabled={!walletPassword || walletPassword.length < 12}
                 >
-                  Create Coreum wallet <Wallet size={15} />
+                  Create TX wallet <Wallet size={15} />
                 </button>
                 <label className="wallet-import">
                   Import encrypted backup
@@ -845,7 +851,7 @@ export function ModalLayer({
                 <span />
               </span>
               <span>
-                <strong>Coreum testnet</strong> ready for local demo giving
+                <strong>TX testnet</strong> ready for local demo giving
               </span>
               <CircleHelp size={15} />
             </div>
@@ -863,7 +869,7 @@ export function ModalLayer({
               </h2>
               <p className="modal-copy">
                 Your {amount.toFixed(6)} TX gift (about {formatMoney(amount * (txUsdRate ?? 0))}) to {modal.project.church} was
-                submitted to the Coreum vault.
+                submitted to the TX vault.
               </p>
               {transactionHash && (
                 <p className="modal-footnote">Transaction: {transactionHash}</p>

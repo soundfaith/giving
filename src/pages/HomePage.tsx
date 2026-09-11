@@ -1,6 +1,6 @@
 import { ArrowUpRight, Zap, Sparkles, Smartphone, Wallet, TrendingUp, Lock, Link2, Shield } from "lucide-react";
 import type { Project } from "../lib/supabase";
-import { formatMoney } from "../lib/projects";
+import { formatMoney, selectFeaturedProjects } from "../lib/projects";
 import { Progress, ProjectVisual } from "../components/ProjectPrimitives";
 
 export function HomePage({ projects, onProject, onDonate }: {
@@ -8,8 +8,7 @@ export function HomePage({ projects, onProject, onDonate }: {
   onProject: (project: Project) => void;
   onDonate: (project: Project) => void;
 }) {
-  // Show only 3-4 featured projects to reduce cognitive load
-  const featuredProjects = projects.slice(0, 3);
+  const featuredProjects = selectFeaturedProjects(projects, 3);
   
   if (projects.length === 0) {
     return (

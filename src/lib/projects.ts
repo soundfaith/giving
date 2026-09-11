@@ -19,3 +19,34 @@ export function formatMoney(value: number) {
 export function formatExchangeRate(value: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 8 }).format(value);
 }
+
+function fundingProgress(project: Project) {
+  return project.goal > 0 ? Math.min(1, Math.max(0, project.raised / project.goal)) : 0;
+}
+
+function isNewProject(project: Project, now: number) {
+  if (!project.createdAt) return false;
+  const createdAt = Date.parse(project.createdAt);
+  return Number.isFinite(createdAt) && now - createdAt <= 7 * 24 * 60 * 60 * 1000;
+}
+
+function hotScore(project: Project, now: number) {
+  const ageDays = project.createdAt ? Math.max(0, (now - Date.parse(project.createdAt)) / (24 * 60 * 60 * 1000)) : 30;
+  const recency = Math.max(0, 1 - ageDays / 30);
+  return (project.likes ?? 0) * 5 + (project.shares ?? 0) * 3 + project.donors * 2 + recency;
+}
+
+export function selectFeaturedProjects(projects: Project[], count = 3, now = Date.now()) {
+  const selected: Project[] = [];
+  const add = (project?: Project) => {
+    if (project && !selected.some((item) => item.id === project.id) && selected.length < count) selected.push(project);
+  };
+  const newest = projects.filter((project) => isNewProject(project, now)).sort((left, right) => Date.parse(right.createdAt ?? "") - Date.parse(left.createdAt ?? ""))[0];
+  const nearFunded = projects.filter((project) => project.status !== "funded").sort((left, right) => fundingProgress(right) - fundingProgress(left))[0];
+  const hottest = [...projects].sort((left, right) => hotScore(right, now) - hotScore(left, now))[0];
+  add(newest);
+  add(nearFunded);
+  add(hottest);
+  [...projects].sort((left, right) => hotScore(right, now) - hotScore(left, now)).forEach(add);
+  return selected;
+}

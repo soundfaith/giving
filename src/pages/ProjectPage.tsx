@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DonationRecord, Project, ProjectComment } from "../lib/supabase";
 import { identityRepository, projectRepository } from "../lib/supabase";
-import { ArrowUpRight, Check, Copy, ExternalLink, MessagesSquare, Send, Share2, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, Check, Copy, ExternalLink, Heart, MessagesSquare, Send, Share2, ShieldCheck } from "lucide-react";
 import { optimizeProjectImageUrl, Progress, ProjectVisual } from "../components/ProjectPrimitives";
 import { claimProjectFunds, getProjectOnChain } from "../lib/wallet";
 import { getBrowserWalletAddress } from "../lib/walletVault";
@@ -40,6 +40,7 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
   const [txUsdRate, setTxUsdRate] = useState<number | null>(null);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [shareMessage, setShareMessage] = useState("");
+  const [likeMessage, setLikeMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -119,10 +120,21 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
         setShareMessage("Link copied");
         window.setTimeout(() => setShareMessage(""), 1600);
       }
+      await projectRepository.recordProjectShare(project.id);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setShareMessage("Unable to share");
       window.setTimeout(() => setShareMessage(""), 1600);
+    }
+  };
+
+  const toggleLike = async () => {
+    setLikeMessage("");
+    try {
+      const engagement = await projectRepository.toggleProjectLike(project.id);
+      setDetails((current) => ({ ...current, likes: Number(engagement.like_count), likedByUser: Boolean(engagement.liked_by_user) }));
+    } catch (error) {
+      setLikeMessage(error instanceof Error ? error.message : "Unable to update your like");
     }
   };
 
@@ -158,7 +170,7 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
 
   const imageUrls = (details.image_urls ?? []).map((imageUrl) => optimizeProjectImageUrl(imageUrl, 420));
   const fundingStatus = details.status === "funded" ? "Funded" : details.status === "closed" ? "Closed" : "Active";
-  return <main className="project-route section-wrap"><div className="project-route-actions"><a className="text-link route-back" href="#/projects">← Back to projects</a><span className="project-share-control"><button className="icon-button" onClick={() => void shareProject()} aria-label="Share project" title="Share project"><Share2 size={16} /></button>{shareMessage && <span>{shareMessage}</span>}</span></div><section className="feature-layout"><div className="project-detail-gallery"><ProjectVisual project={details} featured />{imageUrls.length > 1 && <div className="project-gallery-thumbnails">{imageUrls.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt={`${details.title} project photo ${index + 1}`} />)}</div>}</div><article className="feature-panel"><div className="feature-panel-top"><span className="category-label">{details.category}</span><span className="feature-location">{details.location}</span></div><p className="feature-church">{details.church}</p><h1>{details.title}</h1><p className="feature-description">{details.description}</p><div className="funding-detail"><div className="funding-numbers"><span><strong>${donationTotal.toLocaleString()}</strong> raised</span><span>of ${details.goal.toLocaleString()}</span></div><Progress project={details} large /><div className="funding-footer"><span><b>{Math.round((donationTotal / details.goal) * 100)}%</b> funded</span><span>{contractState?.donor_count ?? details.donors} neighbors have given</span></div></div><button className={details.status === "funded" ? "button feature-donate funded-donate" : "button button-coral feature-donate"} disabled={details.status === "funded"} onClick={onDonate}>{details.status === "funded" ? "Funded" : <>Support this project <ArrowUpRight size={16} /></>}</button></article></section>
+  return <main className="project-route section-wrap"><div className="project-route-actions"><a className="text-link route-back" href="#/projects">← Back to projects</a><span className="project-share-control"><button className="icon-button" onClick={() => void toggleLike()} aria-label={details.likedByUser ? "Unlike project" : "Like project"} title={details.likedByUser ? "Unlike project" : "Like project"}>{<Heart size={16} fill={details.likedByUser ? "currentColor" : "none"} />}</button><span>{details.likes ?? 0}</span><button className="icon-button" onClick={() => void shareProject()} aria-label="Share project" title="Share project"><Share2 size={16} /></button>{shareMessage && <span>{shareMessage}</span>}{likeMessage && <span>{likeMessage}</span>}</span></div><section className="feature-layout"><div className="project-detail-gallery"><ProjectVisual project={details} featured />{imageUrls.length > 1 && <div className="project-gallery-thumbnails">{imageUrls.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt={`${details.title} project photo ${index + 1}`} />)}</div>}</div><article className="feature-panel"><div className="feature-panel-top"><span className="category-label">{details.category}</span><span className="feature-location">{details.location}</span></div><p className="feature-church">{details.church}</p><h1>{details.title}</h1><p className="feature-description">{details.description}</p><div className="funding-detail"><div className="funding-numbers"><span><strong>${donationTotal.toLocaleString()}</strong> raised</span><span>of ${details.goal.toLocaleString()}</span></div><Progress project={details} large /><div className="funding-footer"><span><b>{Math.round((donationTotal / details.goal) * 100)}%</b> funded</span><span>{contractState?.donor_count ?? details.donors} neighbors have given</span></div></div><button className={details.status === "funded" ? "button feature-donate funded-donate" : "button button-coral feature-donate"} disabled={details.status === "funded"} onClick={onDonate}>{details.status === "funded" ? "Funded" : <>Support this project <ArrowUpRight size={16} /></>}</button></article></section>
     <section className="project-detail-grid" style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "24px", marginTop: "40px" }}>
       <div className="project-detail-card" style={{ border: "1px solid var(--line)", background: "var(--white)", padding: "24px" }}>
         <div className="project-section-heading"><span className="eyebrow">Project discussion</span><MessagesSquare className="project-section-icon" aria-hidden="true" /></div>

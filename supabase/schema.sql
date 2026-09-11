@@ -87,6 +87,20 @@ create table if not exists public.project_comments (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.project_likes (
+  project_id uuid not null references public.projects(id) on delete cascade,
+  profile_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (project_id, profile_id)
+);
+
+create table if not exists public.project_shares (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  profile_id uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.indexer_state (
   id text primary key,
   last_height bigint not null default 0,
@@ -107,6 +121,8 @@ alter table public.projects enable row level security;
 alter table public.church_organizations enable row level security;
 alter table public.donations enable row level security;
 alter table public.project_comments enable row level security;
+alter table public.project_likes enable row level security;
+alter table public.project_shares enable row level security;
 alter table public.indexer_state enable row level security;
 
 create policy "public can read active projects" on public.projects
@@ -159,6 +175,21 @@ create policy "users can update their own wallet map" on public.profile_wallets
 
 create policy "project comments are readable by everyone" on public.project_comments
   for select using (true);
+
+create policy "anyone can read project like counts" on public.project_likes
+  for select using (true);
+
+create policy "users can like projects" on public.project_likes
+  for insert to authenticated
+  with check (profile_id = auth.uid());
+
+create policy "users can remove their project likes" on public.project_likes
+  for delete to authenticated
+  using (profile_id = auth.uid());
+
+create policy "anyone can record project shares" on public.project_shares
+  for insert
+  with check (project_id is not null and (profile_id is null or profile_id = auth.uid()));
 
 create policy "authenticated users can post project comments" on public.project_comments
   for insert with check (

@@ -17,6 +17,10 @@ export type Project = {
   accent: string;
   featured?: boolean;
   image_urls?: string[];
+  createdAt?: string;
+  likes?: number;
+  shares?: number;
+  likedByUser?: boolean;
 };
 
 export type Identity = {
@@ -68,6 +72,13 @@ export type Notification = {
   created_at: string;
 };
 
+type ProjectEngagement = {
+  project_id: string;
+  like_count: number;
+  share_count: number;
+  liked_by_user: boolean;
+};
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -98,6 +109,36 @@ export const supabase: SupabaseClient | null =
     : null;
 
 export const projectRepository = {
+  async getProjectEngagement(projectIds: string[]): Promise<Map<string, ProjectEngagement>> {
+    if (!supabase || projectIds.length === 0) return new Map();
+    const { data, error } = await supabase.rpc("get_project_engagement", { project_ids: projectIds });
+    if (error) throw error;
+    return new Map((data ?? []).map((item: ProjectEngagement) => [item.project_id, item]));
+  },
+
+  async toggleProjectLike(projectId: string) {
+    if (!supabase) throw new Error("Sign in to like a project.");
+    const { data: user } = await supabase.auth.getUser();
+    if (!user.user) throw new Error("Sign in to like a project.");
+    const engagement = await this.getProjectEngagement([projectId]);
+    const current = engagement.get(projectId);
+    if (current?.liked_by_user) {
+      const { error } = await supabase.from("project_likes").delete().eq("project_id", projectId).eq("profile_id", user.user.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from("project_likes").insert({ project_id: projectId, profile_id: user.user.id });
+      if (error) throw error;
+    }
+    return (await this.getProjectEngagement([projectId])).get(projectId) ?? { project_id: projectId, like_count: 0, share_count: 0, liked_by_user: false };
+  },
+
+  async recordProjectShare(projectId: string) {
+    if (!supabase) return;
+    const { data: user } = await supabase.auth.getUser();
+    const { error } = await supabase.from("project_shares").insert({ project_id: projectId, profile_id: user.user?.id ?? null });
+    if (error) throw error;
+  },
+
   async list(): Promise<Project[]> {
     if (!supabase) return [];
 
@@ -122,6 +163,7 @@ export const projectRepository = {
     const totalsByProject = new Map(
       (totals ?? []).map((total) => [total.id, total]),
     );
+    const engagementByProject = await this.getProjectEngagement(projectIds);
 
     const chainProjectMap = new Map<string, { raised: number; donors: number }>();
     for (const project of data ?? []) {
@@ -138,6 +180,7 @@ export const projectRepository = {
 
     return (data ?? []).map((project) => {
       const chainStats = chainProjectMap.get(project.id);
+      const engagement = engagementByProject.get(project.id);
       return {
         id: project.id,
         church: project.church_name,
@@ -151,6 +194,10 @@ export const projectRepository = {
         donors: chainStats?.donors ?? Number(totalsByProject.get(project.id)?.donor_count ?? 0),
         accent: "photo-harbor",
         image_urls: project.image_urls ?? [],
+        createdAt: project.created_at,
+        likes: Number(engagement?.like_count ?? 0),
+        shares: Number(engagement?.share_count ?? 0),
+        likedByUser: Boolean(engagement?.liked_by_user),
       };
     });
   },
@@ -181,7 +228,16 @@ export const projectRepository = {
       donors: 0,
       accent: "photo-harbor",
       image_urls: data.image_urls ?? [],
+      createdAt: data.created_at,
+      likes: 0,
+      shares: 0,
+      likedByUser: false,
     };
+
+    const engagement = (await this.getProjectEngagement([projectId])).get(projectId);
+    project.likes = Number(engagement?.like_count ?? 0);
+    project.shares = Number(engagement?.share_count ?? 0);
+    project.likedByUser = Boolean(engagement?.liked_by_user);
 
     try {
       const onChainProject = await getProjectOnChain(projectId);
