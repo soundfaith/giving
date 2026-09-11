@@ -75,6 +75,7 @@ export function ModalLayer({
     churchName: "",
     title: "",
     location: "",
+    country: "United States",
     description: "",
     goalTx: "",
     category: "Sound & AV" as (typeof projectCategories)[number],
@@ -194,7 +195,7 @@ export function ModalLayer({
   const submitChurch = async (event: FormEvent) => {
     event.preventDefault();
     setMessage("");
-    if (!churchForm.name.trim() || !churchForm.churchName.trim() || !churchForm.title.trim() || !churchForm.location.trim() || !churchForm.description.trim() || !churchForm.goalTx || Number(churchForm.goalTx) <= 0) {
+    if (!churchForm.name.trim() || !churchForm.churchName.trim() || !churchForm.title.trim() || !churchForm.location.trim() || !churchForm.country.trim() || !churchForm.description.trim() || !churchForm.goalTx || Number(churchForm.goalTx) <= 0) {
       setMessage("Complete all project fields before submitting.");
       return;
     }
@@ -213,6 +214,7 @@ export function ModalLayer({
         title: churchForm.title.trim(),
         churchName: churchForm.churchName.trim(),
         location: churchForm.location.trim(),
+        country: churchForm.country.trim(),
         description: churchForm.description.trim(),
         category: churchForm.category,
         goalTx: Number(churchForm.goalTx),
@@ -791,6 +793,11 @@ export function ModalLayer({
                       location: event.target.value,
                     })
                   }
+                />
+                <input
+                  placeholder="Country"
+                  value={churchForm.country}
+                  onChange={(event) => setChurchForm({ ...churchForm, country: event.target.value })}
                 />
                 <fieldset className="church-category-options"><legend>Project type</legend>{projectCategories.map((category) => <label className={churchForm.category === category ? "church-category-option selected" : "church-category-option"} key={category}><input type="radio" name="project-category" value={category} checked={churchForm.category === category} onChange={() => setChurchForm({ ...churchForm, category })} /><span>{category}</span></label>)}</fieldset>
                 <input

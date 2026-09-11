@@ -97,29 +97,36 @@ Deno.serve(async (request) => {
         continue;
       }
       try {
-        const result = await chain.execute(
-          account.address,
-          contractAddress,
-          {
-            register_project: {
-              project: {
-                id: project.id,
-                goal_micro_tx: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
-                status: "active",
-                metadata_token_id: "",
-                beneficiary: project.owner_wallet_address,
+        let transactionHash: string | undefined;
+        try {
+          const existing = await chain.queryContractSmart(contractAddress, { project: { project_id: project.id } }) as { status?: string };
+          if (!existing?.status) throw new Error("On-chain project record is incomplete");
+        } catch {
+          const result = await chain.execute(
+            account.address,
+            contractAddress,
+            {
+              register_project: {
+                project: {
+                  id: project.id,
+                  goal_micro_tx: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
+                  status: "active",
+                  metadata_token_id: "",
+                  beneficiary: project.owner_wallet_address,
+                },
               },
             },
-          },
-          { amount: [{ denom: nativeDenom, amount: "50000" }], gas: "1000000" },
-          "SoundFaith edge relayer registration",
-        );
+            { amount: [{ denom: nativeDenom, amount: "50000" }], gas: "1000000" },
+            "SoundFaith edge relayer registration",
+          );
+          transactionHash = result.transactionHash;
+        }
         const { error: activateError } = await supabase.rpc("relayer_activate_project", {
           target_project_id: project.id,
         });
         if (activateError) throw activateError;
-        await heartbeat({ success: true, projectId: project.id, transactionHash: result.transactionHash });
-        results.push({ id: project.id, status: "active", txHash: result.transactionHash });
+        await heartbeat({ success: true, projectId: project.id, transactionHash });
+        results.push({ id: project.id, status: "active", txHash: transactionHash });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         await heartbeat({ error: message, projectId: project.id });

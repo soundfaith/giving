@@ -1,7 +1,7 @@
 import process from 'node:process'
 import { stringToPath } from '@cosmjs/crypto'
 import { DirectSecp256k1HdWallet } from '@cosmjs/proto-signing'
-import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate'
+import { CosmWasmClient, SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate'
 import { createClient } from '@supabase/supabase-js'
 
 const mnemonic = process.env.COREUM_MNEMONIC
@@ -24,6 +24,7 @@ const configuredContractAddress = contractAddress
 const wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix, hdPaths: [stringToPath(derivationPath)] })
 const [account] = await wallet.getAccounts()
 const chain = await SigningCosmWasmClient.connectWithSigner(rpcUrl, wallet)
+const queryClient = await CosmWasmClient.connect(rpcUrl)
 const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
 
 type PendingProject = { id: string; goal_tx: number; owner_wallet_address: string | null }
@@ -48,29 +49,36 @@ async function registerProject(project: PendingProject) {
   const { data: rate, error: rateError } = await supabase.from('tx_exchange_rates').select('tx_usd_rate').eq('id', true).single()
   if (rateError) throw rateError
   const txUsdRate = Number(rate.tx_usd_rate)
-  const result = await chain.execute(
-    account.address,
-    configuredContractAddress,
-    {
-      register_project: {
-        project: {
-          id: project.id,
-          goal_micro_tx: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
-          status: 'active',
-          metadata_token_id: '',
-          beneficiary: project.owner_wallet_address,
+  let transactionHash: string | undefined
+  try {
+    const existing = await queryClient.queryContractSmart(configuredContractAddress, { project: { project_id: project.id } }) as { status?: string }
+    if (!existing?.status) throw new Error('On-chain project record is incomplete')
+  } catch {
+    const result = await chain.execute(
+      account.address,
+      configuredContractAddress,
+      {
+        register_project: {
+          project: {
+            id: project.id,
+            goal_micro_tx: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
+            status: 'active',
+            metadata_token_id: '',
+            beneficiary: project.owner_wallet_address,
+          },
         },
       },
-    },
-    { amount: [{ denom: nativeDenom, amount: '50000' }], gas: '1000000' },
-    'SoundFaith relayer registration',
-  )
+      { amount: [{ denom: nativeDenom, amount: '50000' }], gas: '1000000' },
+      'SoundFaith relayer registration',
+    )
+    transactionHash = result.transactionHash
+  }
 
-  await updateHeartbeat({ success: true, projectId: project.id, transactionHash: result.transactionHash })
+  await updateHeartbeat({ success: true, projectId: project.id, transactionHash })
 
   const { error } = await supabase.rpc('relayer_activate_project', { target_project_id: project.id })
   if (error) throw error
-  console.log(`Registered ${project.id} on ${chainId}: ${result.transactionHash}`)
+  console.log(`${transactionHash ? `Registered ${project.id} on ${chainId}: ${transactionHash}` : `Activated existing ${project.id} on ${chainId}`}`)
 }
 
 async function relayPendingProjects() {

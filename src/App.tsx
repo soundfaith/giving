@@ -5,11 +5,13 @@ import {
   Home,
   Menu,
   Plus,
+  Search,
   UserRound,
   Wallet,
   X,
 } from "lucide-react";
 import { Brand } from "./components/Brand";
+import { ThemeToggle } from "./components/Brand";
 import { ModalLayer, type Modal } from "./components/ModalLayer";
 import { HomePage } from "./pages/HomePage";
 import { AllProjectsPage } from "./pages/AllProjectsPage";
@@ -57,6 +59,7 @@ export default function App() {
   const [projectList, setProjectList] = useState<Project[]>(fallbackProjects);
   const [authUser, setAuthUser] = useState<string | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [theme, setTheme] = useState<"light" | "dark">(() => window.localStorage.getItem("soundfaith-theme") === "dark" ? "dark" : "light");
 
   const refreshUnreadNotifications = () => {
     if (!authUser) {
@@ -118,11 +121,13 @@ export default function App() {
     }
   }, [route]);
   useEffect(() => {
-    document.documentElement.dataset.theme =
-      window.localStorage.getItem("soundfaith-theme") === "dark"
-        ? "dark"
-        : "light";
-  }, []);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  const toggleTheme = () => {
+    const next = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    window.localStorage.setItem("soundfaith-theme", next);
+  };
   useEffect(() => {
     let active = true;
     const handleSession = async (email: string | null) => {
@@ -229,6 +234,7 @@ export default function App() {
           <a href="#/churches" onClick={() => setMobileMenu(false)}>Create Project</a>
           {authUser && <a href="#/inbox" onClick={() => setMobileMenu(false)}>Inbox</a>}
         </nav>
+        {!authUser && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
         <a
           className="button button-dark header-wallet"
           href={authUser ? "#/profile" : "#/"}
@@ -255,34 +261,39 @@ export default function App() {
           <Home size={17} />
           <span>Home</span>
         </a>
-        <a
-          href="#/churches"
-          className={route.name === "churches" ? "active" : ""}
-        >
+        {!authUser ? <a href="#/all-projects" className={route.name === "all-projects" ? "active" : ""}>
+          <Search size={17} />
+          <span>Browse</span>
+        </a> : <a href="#/churches" className={route.name === "churches" ? "active" : ""}>
           <Plus size={17} />
           <span>Create</span>
-        </a>
+        </a>}
         <a href="#/all-projects" className="mobile-donate">
           <Heart size={20} />
           <span>Donate</span>
         </a>
-        <a
-          href="#/inbox"
-          className={route.name === "inbox" || route.name === "activities" || route.name === "notifications" ? "active" : ""}
-        >
-          <Bell size={17} />
-          <span>Inbox</span>
-        </a>
-        <a
-          href="#/profile"
-          className={route.name === "profile" ? "active" : ""}
-        >
-          <span className="mobile-profile-icon-wrap">
+        {!authUser ? <>
+          <a href="#/churches" className={route.name === "churches" ? "active" : ""}>
+            <Plus size={17} />
+            <span>Create</span>
+          </a>
+          <a href="#/" onClick={(event) => { event.preventDefault(); setModal({ type: "wallet" }); }}>
             <UserRound size={17} />
-            {unreadNotifications > 0 && <span className="notification-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}
-          </span>
-          <span>Profile</span>
-        </a>
+            <span>Sign in</span>
+          </a>
+        </> : <>
+          <a href="#/inbox" className={route.name === "inbox" || route.name === "activities" || route.name === "notifications" ? "active" : ""}>
+            <span className="mobile-profile-icon-wrap">
+              <Bell size={17} />
+              {unreadNotifications > 0 && <span className="notification-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}
+            </span>
+            <span>Inbox</span>
+          </a>
+          <a href="#/profile" className={route.name === "profile" ? "active" : ""}>
+            <UserRound size={17} />
+            <span>Profile</span>
+          </a>
+        </>}
       </nav>
       <footer className="site-footer">
         <div className="footer-brand">

@@ -13,13 +13,13 @@ export function Progress({ project, large = false }: { project: Project; large?:
   return <div className={large ? "progress progress-large" : "progress"}><div style={{ width: `${percent}%` }} /></div>;
 }
 
-export function ProjectVisual({ project, featured = false }: { project: Project; featured?: boolean }) {
+export function ProjectVisual({ project, featured = false, compact = false }: { project: Project; featured?: boolean; compact?: boolean }) {
   const imageUrl = project.image_urls?.[0];
   const optimizedImageUrl = imageUrl ? optimizeProjectImageUrl(imageUrl, featured ? 1280 : 720) : undefined;
 
   return (
     <div
-      className={`project-visual ${project.accent} ${featured ? "project-visual-featured" : ""} ${
+      className={`project-visual ${project.accent} ${featured ? "project-visual-featured" : ""} ${compact ? "project-visual-compact" : ""} ${
         imageUrl ? "project-visual-has-image" : ""
       }`}
       style={
@@ -42,7 +42,7 @@ export function ProjectVisual({ project, featured = false }: { project: Project;
           <span className="visual-line" />
         </>
       )}
-      <span className="visual-label">{project.category}</span>
+      <span className="visual-label">{project.location}, {project.country}</span>
     </div>
   );
 }

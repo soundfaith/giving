@@ -62,29 +62,32 @@ export function HomePage({ projects, onProject, onDonate }: {
             <article key={project.id} className="featured-card" style={{ animationDelay: `${index * 100}ms` }}>
               <ProjectVisual project={project} />
               <div className="card-body">
-                <div className="card-meta">
-                  <span className="category-label">{project.category}</span>
-                  {project.status === "funded" && <span className="funded-badge">Funded</span>}
-                  <span>{project.location}</span>
-                </div>
-                <p className="card-church">{project.church}</p>
-                <h3>{project.title}</h3>
-                <p className="card-description">{project.description}</p>
-                <div className="card-funding">
-                  <div className="card-funding-copy">
-                    <strong>{formatMoney(project.raised)}</strong>
-                    <span>of {formatMoney(project.goal)}</span>
+                <div className="card-copy">
+                  <div className="card-meta">
+                    <span className="category-label">{project.category}</span>
+                    {project.status === "funded" && <span className="funded-badge">Funded</span>}
                   </div>
-                  <Progress project={project} />
+                  <p className="card-church">{project.church}</p>
+                  <h3>{project.title}</h3>
+                  <p className="card-description">{project.description}</p>
                 </div>
-                <div className="card-footer">
+                <footer className="card-footer-area">
+                  <div className="card-funding">
+                    <div className="card-funding-copy">
+                      <strong>{formatMoney(project.raised)}</strong>
+                      <span>of {formatMoney(project.goal)}</span>
+                    </div>
+                    <Progress project={project} />
+                  </div>
+                  <div className="card-footer">
                   <button className="button button-coral button-small" disabled={project.status === "funded"} onClick={() => onDonate(project)}>
                     {project.status === "funded" ? "Funded" : <>Give now <ArrowUpRight size={14} /></>}
                   </button>
                   <button className="text-link" onClick={() => onProject(project)}>
                     Learn more
                   </button>
-                </div>
+                  </div>
+                </footer>
               </div>
             </article>
           ))}

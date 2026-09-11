@@ -17,6 +17,7 @@ type FormState = {
   churchName: string;
   title: string;
   location: string;
+  country: string;
   description: string;
   goalTx: string;
   category: (typeof projectCategories)[number];
@@ -30,6 +31,7 @@ const emptyForm: FormState = {
   churchName: "",
   title: "",
   location: "",
+  country: "United States",
   description: "",
   goalTx: "",
   category: "Sound & AV",
@@ -123,6 +125,7 @@ export function ChurchPage({ authenticated, onSignIn }: { authenticated: boolean
     draft.churchName.trim() &&
     draft.title.trim() &&
     draft.location.trim() &&
+    draft.country.trim() &&
     draft.description.trim() &&
     draft.goalTx &&
     Number(draft.goalTx) > 0 &&
@@ -133,7 +136,7 @@ export function ChurchPage({ authenticated, onSignIn }: { authenticated: boolean
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setMessage("");
-    if (!draft.name.trim() || !draft.churchName.trim() || !draft.title.trim() || !draft.location.trim() || !draft.description.trim() || !draft.goalTx || Number(draft.goalTx) <= 0) {
+    if (!draft.name.trim() || !draft.churchName.trim() || !draft.title.trim() || !draft.location.trim() || !draft.country.trim() || !draft.description.trim() || !draft.goalTx || Number(draft.goalTx) <= 0) {
       setMessage("Complete the required project details before submitting.");
       return;
     }
@@ -151,6 +154,7 @@ export function ChurchPage({ authenticated, onSignIn }: { authenticated: boolean
         title: draft.title.trim(),
         churchName: draft.churchName.trim(),
         location: draft.location.trim(),
+        country: draft.country.trim(),
         description: draft.description.trim(),
         category: draft.category,
         goalTx: Number(draft.goalTx),
@@ -180,6 +184,7 @@ export function ChurchPage({ authenticated, onSignIn }: { authenticated: boolean
   return <main className="church-page section-wrap">
     <header className="church-page-heading"><div><p className="eyebrow">For churches · project submission</p><h1>Make room<br /><em>for more.</em></h1><p className="page-intro">Share the practical change your church wants to make. Clear details help the review team understand the need, the people it serves, and the impact your project can have.</p></div></header>
     <form className="church-page-form" onSubmit={(event) => void submit(event)}>
+      <div className="country-field"><label>Country *<input required value={draft.country} onChange={(event) => update("country", event.target.value)} placeholder="United States" /></label></div>
       <section className="church-form-section"><div className="church-form-label"><span>01</span><div><p className="eyebrow">The basics</p><h2>Tell us about the project.</h2><p>These details give your application a clear starting point.</p></div></div><div className="church-form-grid"><label>Organization name *<input required value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="Your organization" /></label><label>Church name *<input required value={draft.churchName} onChange={(event) => update("churchName", event.target.value)} placeholder="The church or community" /></label><label>Project title *<input required value={draft.title} onChange={(event) => update("title", event.target.value)} placeholder="A short, clear project name" /></label><label>City, state *<input required value={draft.location} onChange={(event) => update("location", event.target.value)} placeholder="Austin, TX" /></label><label>Funding goal in USD *<input required className="goal-input" type="number" min="1" value={draft.goalTx} onChange={(event) => update("goalTx", event.target.value)} placeholder="15000" /></label><label>Project type<select value={draft.category} onChange={(event) => update("category", event.target.value as FormState["category"])}>{projectCategories.map((category) => <option key={category}>{category}</option>)}</select></label></div></section>
       <section className="church-form-section"><div className="church-form-label"><span>02</span><div><p className="eyebrow">The story</p><h2>Help people understand the need.</h2><p>Include the context, who benefits, and what the funding will make possible.</p></div></div><div><label className="church-description-label">Project description *<textarea required value={draft.description} onChange={(event) => update("description", event.target.value)} placeholder="What do you want to improve? Why does it matter now? Who will this help? What will be different when the project is complete?" /></label><p className="form-note"><FileText size={14} /> Relevant details, a simple budget explanation, and a clear picture of the community impact can help your project move through review.</p></div></section>
       <section className="church-form-section"><div className="church-form-label"><span>03</span><div><p className="eyebrow">The picture</p><h2>Show us the space.</h2><p>Add up to three photos. The banner image appears first on your project page.</p></div></div><div className="church-photo-workspace"><label className={dragging ? "church-upload-card dragging" : "church-upload-card"} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={handleDrop}><ImagePlus size={22} /><strong>Drop photos here or choose files</strong><small>JPG, PNG, or WebP · up to 3 images</small><input type="file" accept="image/*" multiple onChange={handleFiles} /></label>{draft.photos.length > 0 && <><div className="church-photo-previews">{draft.photos.map((photo, index) => <div className={index === draft.bannerIndex ? "church-photo-preview selected" : "church-photo-preview"} key={`${photo.name}-${index}`} role="button" tabIndex={0} onClick={() => setDraft((current) => ({ ...current, bannerIndex: index }))} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setDraft((current) => ({ ...current, bannerIndex: index })); }}><img src={photo.dataUrl} alt={`Project preview ${index + 1}`} /><div><button type="button" onClick={(event) => { event.stopPropagation(); setDraft((current) => ({ ...current, bannerIndex: index })); }}>{index === draft.bannerIndex ? "Banner image" : "Use as banner"}</button><button type="button" aria-label={`Remove ${photo.name}`} onClick={(event) => { event.stopPropagation(); removePhoto(index); }}><X size={13} /></button></div></div>)}</div><div className="banner-previews"><div><p className="eyebrow">Catalog preview</p><article className="banner-preview banner-preview-catalog"><img src={(draft.photos[draft.bannerIndex] ?? draft.photos[0]).dataUrl} alt="Selected banner in project catalog" /><strong>{draft.title || "Your project title"}</strong><span>{draft.churchName || "Your church"}</span></article></div><div><p className="eyebrow">Project page preview</p><article className="banner-preview banner-preview-detail"><img src={(draft.photos[draft.bannerIndex] ?? draft.photos[0]).dataUrl} alt="Selected banner on project page" /><strong>{draft.title || "Your project title"}</strong><span>{draft.description || "Your project description will appear here."}</span></article></div></div></>}</div></section>

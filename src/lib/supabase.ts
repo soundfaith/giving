@@ -7,6 +7,7 @@ export type Project = {
   id: string;
   church: string;
   location: string;
+  country: string;
   title: string;
   description: string;
   category: ProjectCategory;
@@ -185,6 +186,7 @@ export const projectRepository = {
         id: project.id,
         church: project.church_name,
         location: project.location,
+        country: project.country ?? "United States",
         title: project.title,
         description: project.description,
         category: project.category as ProjectCategory,
@@ -219,6 +221,7 @@ export const projectRepository = {
       id: data.id,
       church: data.church_name,
       location: data.location,
+      country: data.country ?? "United States",
       title: data.title,
       description: data.description,
       category: data.category as ProjectCategory,

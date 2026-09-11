@@ -26,6 +26,7 @@ create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   church_name text not null,
   location text not null,
+  country text not null default 'United States',
   title text not null,
   description text not null,
   category text not null check (category in ('Sound & AV', 'Worship & Gathering', 'Facilities & Maintenance', 'Community & Outreach', 'General Church Needs')),

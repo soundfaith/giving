@@ -5,6 +5,7 @@ export type ChurchProjectDraft = {
   title: string;
   churchName: string;
   location: string;
+  country: string;
   description: string;
   category: "Sound & AV" | "Worship & Gathering" | "Facilities & Maintenance" | "Community & Outreach" | "General Church Needs";
   goalTx: number;
@@ -42,6 +43,7 @@ export async function submitChurchProject(draft: ChurchProjectDraft) {
       owner_wallet_address: draft.ownerWalletAddress,
       church_name: draft.churchName,
       location: draft.location,
+      country: draft.country,
       title: draft.title,
       description: draft.description,
       category: draft.category,
