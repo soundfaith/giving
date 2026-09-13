@@ -494,3 +494,6 @@ Start with manual updates for the first deployment. Once the Pi has run reliably
 - You accept that a bad production commit can restart the relayer.
 
 The safest production arrangement is a protected release branch, explicit versioned releases, and a manual update command. Automatic polling is a convenience, not a replacement for deployment review.
+
+
+
