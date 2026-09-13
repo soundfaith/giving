@@ -25,7 +25,6 @@ export async function refreshTxExchangeRate() { const { data, error } = await cl
 export type DonationSyncStatus = { total: number; synced: number; unsynced: number };
 export async function getDonationSyncStatus() { const { data, error } = await client().functions.invoke("sync-donations", { body: { sync: false } }); if (error) throw error; return data as DonationSyncStatus; }
 export async function syncDonations() { const { data, error } = await client().functions.invoke("sync-donations", { body: { sync: true } }); if (error) throw error; return data as DonationSyncStatus; }
-export async function invokeRelayer() { const { data, error } = await client().functions.invoke("coreum-relayer", { body: {} }); if (error) throw error; return data; }
 export async function setReviewerStatus(profileId: string, status: AdminReviewer["status"]) { const { error } = await client().rpc("admin_set_reviewer_status", { target_profile_id: profileId, next_status: status }); if (error) throw error; }
 export async function setReviewThresholds(projectId: string, approvals: number, rejections: number) { const { error } = await client().rpc("admin_set_review_thresholds", { target_project_id: projectId, next_approval_threshold: approvals, next_rejection_threshold: rejections }); if (error) throw error; }
 export async function resolveProject(projectId: string, status: "approve" | "closed") {

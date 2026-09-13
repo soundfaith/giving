@@ -72,6 +72,7 @@ try {
   New-Item -ItemType Directory -Path $stage | Out-Null
   try {
     Copy-Item (Join-Path $root 'scripts\coreum-relayer.ts') $stage
+    Copy-Item (Join-Path $root 'scripts\coreum-indexer.ts') $stage
     Copy-Item (Join-Path $root 'package.json') $stage
     Copy-Item (Join-Path $root 'package-lock.json') $stage
     Copy-Item (Join-Path $root 'tsconfig.scripts.json') $stage
@@ -81,7 +82,7 @@ try {
   } finally {
     Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
   }
-  Invoke-Sudo 'install -d -o soundfaith -g soundfaith /opt/soundfaith/scripts; cp /tmp/coreum-relayer.ts /opt/soundfaith/scripts/; cp /tmp/package.json /tmp/package-lock.json /tmp/tsconfig.scripts.json /opt/soundfaith/; chown -R soundfaith:soundfaith /opt/soundfaith'
+  Invoke-Sudo 'install -d -o soundfaith -g soundfaith /opt/soundfaith/scripts; cp /tmp/coreum-relayer.ts /tmp/coreum-indexer.ts /opt/soundfaith/scripts/; cp /tmp/package.json /tmp/package-lock.json /tmp/tsconfig.scripts.json /opt/soundfaith/; chown -R soundfaith:soundfaith /opt/soundfaith'
   Invoke-Remote $sessionId 'cd /opt/soundfaith && npm ci && npm run typecheck:scripts'
 
   $envContent = @"
@@ -94,7 +95,9 @@ COREUM_CHAIN_ID=coreum-testnet-1
 COREUM_BECH32_PREFIX=testcore
 COREUM_DERIVATION_PATH=m/44'/990'/0'/0/0
 COREUM_NATIVE_DENOM=utestcore
+COREUM_NETWORK=testnet
 COREUM_RELAYER_POLL_MS=10000
+COREUM_INDEXER_POLL_MS=10000
 "@
   $envB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($envContent))
   Invoke-Sudo "printf '%s' '$envB64' | base64 -d > /etc/soundfaith-relayer.env; chown root:root /etc/soundfaith-relayer.env; chmod 600 /etc/soundfaith-relayer.env"
@@ -126,9 +129,14 @@ WantedBy=multi-user.target
 '@
   $unitB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($unit))
   Invoke-Sudo "printf '%s' '$unitB64' | base64 -d > /etc/systemd/system/soundfaith-relayer.service; systemctl daemon-reload; systemctl enable soundfaith-relayer"
+  $indexerUnit = $unit.Replace('SoundFaith Coreum project relayer', 'SoundFaith Coreum donation indexer').Replace('soundfaith-relayer', 'soundfaith-indexer').Replace('/etc/soundfaith-indexer.env', '/etc/soundfaith-relayer.env').Replace('coreum:relayer', 'coreum:indexer')
+  $indexerUnitB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($indexerUnit))
+  Invoke-Sudo "printf '%s' '$indexerUnitB64' | base64 -d > /etc/systemd/system/soundfaith-indexer.service; systemctl daemon-reload; systemctl enable soundfaith-indexer"
   Invoke-Sudo 'systemctl stop soundfaith-relayer || true'
   Invoke-Sudo 'systemctl start soundfaith-relayer; systemctl is-enabled soundfaith-relayer; systemctl is-active soundfaith-relayer'
+  Invoke-Sudo 'systemctl restart soundfaith-indexer; systemctl is-enabled soundfaith-indexer; systemctl is-active soundfaith-indexer'
   Invoke-Sudo 'journalctl -u soundfaith-relayer -n 30 --no-pager'
+  Invoke-Sudo 'journalctl -u soundfaith-indexer -n 30 --no-pager'
 } finally {
   Remove-SSHSession -SessionId $sessionId | Out-Null
   Remove-Variable piPassword, mnemonic, serviceKey, passwordB64, securePassword, credential, keyCredential -ErrorAction SilentlyContinue
