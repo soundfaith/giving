@@ -32,8 +32,10 @@ import {
 import {
   activateBrowserWalletForAddress,
   claimBrowserWalletForEmail,
-  clearActiveBrowserWallet,
+  getActiveBrowserWallet,
 } from "./lib/walletVault";
+
+const rememberedSessionKey = "soundfaith-remembered-session";
 
 function readRoute() {
   const path = window.location.hash.replace(/^#\/?/, "").split("?")[0];
@@ -57,7 +59,7 @@ export default function App() {
   const mobileMenuRef = useRef<HTMLElement | null>(null);
   const [modal, setModal] = useState<Modal | null>(null);
   const [projectList, setProjectList] = useState<Project[]>(fallbackProjects);
-  const [authUser, setAuthUser] = useState<string | null>(null);
+  const [authUser, setAuthUser] = useState<string | null>(() => window.localStorage.getItem(rememberedSessionKey));
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">(() => window.localStorage.getItem("soundfaith-theme") === "dark" ? "dark" : "light");
 
@@ -132,21 +134,23 @@ export default function App() {
     let active = true;
     const handleSession = async (email: string | null) => {
       if (!active) return;
-      setAuthUser(email);
       if (!email) {
-        clearActiveBrowserWallet();
+        setAuthUser(window.localStorage.getItem(rememberedSessionKey));
         return;
       }
+      window.localStorage.setItem(rememberedSessionKey, email);
+      setAuthUser(email);
       const profile = await identityRepository.syncProfile().catch(() => null);
-      const walletAddress = profile?.wallet_address ?? null;
+      const activeWallet = await getActiveBrowserWallet().catch(() => null);
+      const walletAddress = profile?.wallet_address ?? activeWallet?.address ?? null;
       const localWallet = walletAddress
         ? await activateBrowserWalletForAddress(walletAddress)
-        : null;
+        : activeWallet;
       if (localWallet && profile?.email) {
         await claimBrowserWalletForEmail(localWallet.address, profile.email);
       }
       if (!localWallet) {
-        clearActiveBrowserWallet();
+        // A wallet is only cleared when the user explicitly removes it or logs out.
       } else {
         await identityRepository.syncProfile(localWallet.address).catch(() => {});
       }
@@ -159,7 +163,10 @@ export default function App() {
     projectRepository
       .list()
       .then((remote) => {
-        if (active && remote.length) setProjectList(remote);
+        if (!active || !remote.length) return;
+        setProjectList(remote);
+        void Promise.all(remote.map((project) => projectRepository.syncProjectFromChain(project).catch(() => project)))
+          .then((synced) => { if (active) setProjectList(synced); });
       })
       .catch(() => {});
     if (!supabase)

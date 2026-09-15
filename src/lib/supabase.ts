@@ -22,6 +22,8 @@ export type Project = {
   likes?: number;
   shares?: number;
   likedByUser?: boolean;
+  chainProjectId?: string;
+  chainSynced?: boolean;
 };
 
 export type Identity = {
@@ -45,7 +47,7 @@ export type DonationRecord = {
   amount_tx: number;
   tx_usd_rate?: number | null;
   amount_usd?: number | null;
-  tx_hash: string;
+  tx_hash: string | null;
   network: string;
   created_at: string;
   project?: { title: string; church_name: string } | null;
@@ -82,6 +84,7 @@ type ProjectEngagement = {
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const rememberedSessionKey = "soundfaith-remembered-session";
 
 const supabaseGlobal = globalThis as typeof globalThis & {
   __soundfaithSupabase?: SupabaseClient;
@@ -166,21 +169,7 @@ export const projectRepository = {
     );
     const engagementByProject = await this.getProjectEngagement(projectIds);
 
-    const chainProjectMap = new Map<string, { raised: number; donors: number }>();
-    for (const project of data ?? []) {
-      try {
-        const onChainProject = await getProjectOnChain(project.id);
-        chainProjectMap.set(project.id, {
-          raised: Number(onChainProject.raised_micro_tx ?? "0") / 1_000_000,
-          donors: Number(onChainProject.donor_count ?? 0),
-        });
-      } catch {
-        // Fall back to the Supabase totals when the contract is not configured or the project is not yet registered.
-      }
-    }
-
     return (data ?? []).map((project) => {
-      const chainStats = chainProjectMap.get(project.id);
       const engagement = engagementByProject.get(project.id);
       return {
         id: project.id,
@@ -190,16 +179,18 @@ export const projectRepository = {
         title: project.title,
         description: project.description,
         category: project.category as ProjectCategory,
-        raised: (chainStats?.raised ?? Number(totalsByProject.get(project.id)?.raised_tx ?? 0)) * txUsdRate,
+        raised: Number(totalsByProject.get(project.id)?.raised_tx ?? 0) * txUsdRate,
         goal: Number(project.goal_tx),
         status: project.status,
-        donors: chainStats?.donors ?? Number(totalsByProject.get(project.id)?.donor_count ?? 0),
+        donors: Number(totalsByProject.get(project.id)?.donor_count ?? 0),
         accent: "photo-harbor",
         image_urls: project.image_urls ?? [],
         createdAt: project.created_at,
         likes: Number(engagement?.like_count ?? 0),
         shares: Number(engagement?.share_count ?? 0),
         likedByUser: Boolean(engagement?.liked_by_user),
+        chainProjectId: project.chain_project_id ?? project.id,
+        chainSynced: false,
       };
     });
   },
@@ -235,6 +226,8 @@ export const projectRepository = {
       likes: 0,
       shares: 0,
       likedByUser: false,
+      chainProjectId: data.chain_project_id ?? projectId,
+      chainSynced: false,
     };
 
     const engagement = (await this.getProjectEngagement([projectId])).get(projectId);
@@ -242,23 +235,28 @@ export const projectRepository = {
     project.shares = Number(engagement?.share_count ?? 0);
     project.likedByUser = Boolean(engagement?.liked_by_user);
 
-    try {
-      const onChainProject = await getProjectOnChain(projectId);
-      project.raised = (Number(onChainProject.raised_micro_tx ?? "0") / 1_000_000) * txUsdRate;
-      project.donors = Number(onChainProject.donor_count ?? 0);
-    } catch {
-      const { data: totals, error: totalsError } = await supabase
-        .from("project_totals")
-        .select("raised_tx, donor_count")
-        .eq("id", projectId)
-        .maybeSingle();
-      if (!totalsError && totals) {
-        project.raised = Number(totals.raised_tx ?? 0) * txUsdRate;
-        project.donors = Number(totals.donor_count ?? 0);
-      }
+    const { data: totals, error: totalsError } = await supabase
+      .from("project_totals")
+      .select("raised_tx, donor_count")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (!totalsError && totals) {
+      project.raised = Number(totals.raised_tx ?? 0) * txUsdRate;
+      project.donors = Number(totals.donor_count ?? 0);
     }
 
     return project;
+  },
+
+  async syncProjectFromChain(project: Project): Promise<Project> {
+    const onChainProject = await getProjectOnChain(project.chainProjectId ?? project.id);
+    const txUsdRate = (await identityRepository.getTxExchangeRate()).tx_usd_rate;
+    return {
+      ...project,
+      raised: (Number(onChainProject.raised_micro_tx ?? "0") / 1_000_000) * txUsdRate,
+      donors: Number(onChainProject.donor_count ?? 0),
+      chainSynced: true,
+    };
   },
 
   async getDonationHistory(projectId: string): Promise<DonationRecord[]> {
@@ -270,6 +268,23 @@ export const projectRepository = {
       .order("created_at", { ascending: false });
     if (error) throw error;
     return (data ?? []) as DonationRecord[];
+  },
+
+  async recordConfirmedDonation(input: { projectId: string; walletAddress: string; amountTx: number; txHash: string; txUsdRate: number }) {
+    if (!supabase || !input.txHash) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase.from("donations").upsert({
+      project_id: input.projectId,
+      profile_id: user.id,
+      wallet_address: input.walletAddress,
+      amount_tx: input.amountTx,
+      tx_usd_rate: input.txUsdRate,
+      amount_usd: input.amountTx * input.txUsdRate,
+      tx_hash: input.txHash,
+      network: "coreum-testnet",
+    }, { onConflict: "tx_hash" });
+    if (error) throw error;
   },
 
   async getComments(projectId: string): Promise<ProjectComment[]> {
@@ -491,6 +506,7 @@ export const identityRepository = {
   },
 
   async signOut() {
+    window.localStorage.removeItem(rememberedSessionKey);
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
