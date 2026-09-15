@@ -22,7 +22,7 @@ public static class SoundFaithMvpCredential {
 
 $envFile = Get-Content .env.local
 $env:VITE_SUPABASE_URL = (($envFile | Where-Object { $_ -match '^VITE_SUPABASE_URL=' }) -split '=', 2)[1]
-$env:COREUM_DONATION_CONTRACT = (($envFile | Where-Object { $_ -match '^VITE_COREUM_DONATION_CONTRACT=' }) -split '=', 2)[1]
+$env:COREUM_DONATION_CONTRACT = 'testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p'
 $keys = supabase projects api-keys --project-ref $ProjectRef --reveal --output json | ConvertFrom-Json
 $serviceKeyEntry = $keys | Where-Object { $_.name -eq 'service_role' } | Select-Object -First 1
 $env:SUPABASE_SERVICE_ROLE_KEY = if ($serviceKeyEntry.api_key) { $serviceKeyEntry.api_key } else { $serviceKeyEntry.key }

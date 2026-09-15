@@ -58,7 +58,7 @@ async function indexDonations() {
     const amountMicroTx = value([donationEvent], 'amount_microtx') ?? value([donationEvent], 'amount')
     if (!projectId || !donorAddress || !amountMicroTx) throw new Error(`Donation event ${transaction.hash} is missing required attributes`)
 
-    const { data: project } = await supabase.from('projects').select('id').eq('id', projectId).maybeSingle()
+    const { data: project } = await supabase.from('projects').select('id').or(`id.eq.${projectId},chain_project_id.eq.${projectId}`).maybeSingle()
     if (!project) {
       console.warn(`Skipping donation ${transaction.hash}: project ${projectId} no longer exists`)
       await saveCursor(transaction.height)
@@ -85,8 +85,9 @@ async function indexDonations() {
       network: process.env.COREUM_NETWORK === 'mainnet' ? 'coreum-mainnet' : 'coreum-testnet',
     }, { onConflict: 'tx_hash' })
     if (error) throw error
-    const onChainProject = await chain.queryContractSmart(configuredContractAddress, { project: { project_id: projectId } }) as { goal_micro_tx?: string; raised_micro_tx?: string }
-    if (BigInt(onChainProject.raised_micro_tx ?? '0') >= BigInt(onChainProject.goal_micro_tx ?? '0')) {
+    const onChainResponse = await chain.queryContractSmart(configuredContractAddress, { project: { project_id: projectId } }) as { project?: { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string } } | { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string }
+    const onChainProject = ('project' in onChainResponse && onChainResponse.project ? onChainResponse.project : onChainResponse) as { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string }
+    if (BigInt(onChainProject.raised ?? onChainProject.raised_micro_tx ?? '0') >= BigInt(onChainProject.goal ?? onChainProject.goal_micro_tx ?? '0')) {
       const { error: projectStatusError } = await supabase.from('projects').update({ status: 'funded' }).eq('id', projectId).eq('status', 'active')
       if (projectStatusError) throw projectStatusError
     }

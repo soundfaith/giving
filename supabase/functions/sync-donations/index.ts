@@ -54,9 +54,9 @@ Deno.serve(async (request) => {
       .map((transaction) => ({ transaction, event: transaction.events.find((event) => event.type === "wasm" && eventValue(event, "action") === "donation_received") }))
       .filter((item): item is { transaction: IndexedTransaction; event: ChainEvent } => Boolean(item.event));
 
-    const { data: projects, error: projectsError } = await supabase.from("projects").select("id, status");
+    const { data: projects, error: projectsError } = await supabase.from("projects").select("id, chain_project_id, status");
     if (projectsError) throw projectsError;
-    const projectIds = new Set((projects ?? []).map((project) => project.id));
+    const projectIds = new Set((projects ?? []).flatMap((project) => [project.id, project.chain_project_id].filter(Boolean)));
     const currentDonationTransactions = donationTransactions.filter(({ event }) => {
       const projectId = eventValue(event, "project_id");
       return Boolean(projectId && projectIds.has(projectId));
@@ -83,7 +83,7 @@ Deno.serve(async (request) => {
       const amountMicroTx = eventValue(event, "amount_microtx") ?? eventValue(event, "amount");
       if (!projectId || !donorAddress || !amountMicroTx) continue;
 
-      const { data: project, error: projectError } = await supabase.from("projects").select("id").eq("id", projectId).maybeSingle();
+      const { data: project, error: projectError } = await supabase.from("projects").select("id").or(`id.eq.${projectId},chain_project_id.eq.${projectId}`).maybeSingle();
       if (projectError) throw projectError;
       if (!project) continue;
 
@@ -93,7 +93,7 @@ Deno.serve(async (request) => {
         : await supabase.from("profile_wallets").select("user_id").eq("wallet_address", donorAddress).maybeSingle();
       const amountTx = Number(amountMicroTx) / 1_000_000;
       const { error: donationError } = await supabase.from("donations").upsert({
-        project_id: projectId,
+        project_id: project.id,
         profile_id: profile?.id ?? walletProfile?.user_id ?? null,
         wallet_address: donorAddress,
         amount_tx: amountTx,
@@ -109,11 +109,12 @@ Deno.serve(async (request) => {
 
     // The contract remains active after reaching its goal until the beneficiary
     // starts the claim flow, so funding status must be derived from its totals.
-    const { data: currentProjects, error: currentProjectsError } = await supabase.from("projects").select("id, status").in("status", ["active", "funded"]);
+    const { data: currentProjects, error: currentProjectsError } = await supabase.from("projects").select("id, chain_project_id, status").in("status", ["active", "funded"]);
     if (currentProjectsError) throw currentProjectsError;
     for (const project of currentProjects ?? []) {
-      const onChainProject = await chain.queryContractSmart(contractAddress, { project: { project_id: project.id } }) as { goal_micro_tx?: string; raised_micro_tx?: string };
-      const reachedGoal = BigInt(onChainProject.raised_micro_tx ?? "0") >= BigInt(onChainProject.goal_micro_tx ?? "0");
+      const onChainResponse = await chain.queryContractSmart(contractAddress, { project: { project_id: project.chain_project_id ?? project.id } }) as { project?: { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string } };
+      const onChainProject = onChainResponse.project ?? onChainResponse;
+      const reachedGoal = BigInt(onChainProject.raised ?? onChainProject.raised_micro_tx ?? "0") >= BigInt(onChainProject.goal ?? onChainProject.goal_micro_tx ?? "0");
       if (reachedGoal && project.status === "active") {
         const { error: statusError } = await supabase.from("projects").update({ status: "funded" }).eq("id", project.id).eq("status", "active");
         if (statusError) throw statusError;

@@ -7,7 +7,7 @@ const chainId = import.meta.env.VITE_COREUM_CHAIN_ID ?? "coreum-testnet-1";
 const rpcUrl =
   import.meta.env.VITE_COREUM_RPC_URL ??
   "https://rpc.testnet-1.tx.org:443";
-const currentTestnetContract = "testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey";
+const currentTestnetContract = "testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p";
 const configuredContractAddress = import.meta.env.VITE_COREUM_DONATION_CONTRACT ?? currentTestnetContract;
 const contractAddress = configuredContractAddress === "testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg"
   ? currentTestnetContract
@@ -129,12 +129,28 @@ export type OnChainProject = {
   beneficiary: string;
 };
 
+function normalizeOnChainProject(raw: Record<string, unknown>, fallbackId: string): OnChainProject {
+  const project = (raw?.project as Record<string, unknown>) ?? raw ?? {};
+  const goalValue = String(project.goal ?? project.goal_micro_tx ?? "0");
+  const raisedValue = String(project.raised ?? project.raised_micro_tx ?? "0");
+  return {
+    id: String(project.id ?? fallbackId),
+    goal_micro_tx: goalValue,
+    raised_micro_tx: raisedValue,
+    donor_count: Number(project.donor_count ?? 0),
+    status: String(project.status ?? "unknown"),
+    metadata_token_id: String(project.metadata_token_id ?? ""),
+    beneficiary: String(project.beneficiary ?? ""),
+  };
+}
+
 export async function getProjectOnChain(projectId: string): Promise<OnChainProject> {
   if (!contractAddress) throw new Error("VITE_COREUM_DONATION_CONTRACT is not configured");
   const client = await CosmWasmClient.connect(rpcUrl);
-  return client.queryContractSmart(contractAddress, {
+  const response = (await client.queryContractSmart(contractAddress, {
     project: { project_id: projectId },
-  }) as Promise<OnChainProject>;
+  })) as Record<string, unknown>;
+  return normalizeOnChainProject(response, projectId);
 }
 
 export async function claimProjectFunds(projectId: string, password?: string) {

@@ -8,7 +8,7 @@ import {
   submitChurchProject,
   uploadProjectPhoto,
 } from "../lib/churches";
-import { identityRepository, type DonationRecord } from "../lib/supabase";
+import { identityRepository, projectRepository, type DonationRecord } from "../lib/supabase";
 import type { Project } from "../lib/supabase";
 import { formatExchangeRate, formatMoney } from "../lib/projects";
 import { projectCategories } from "../lib/projects";
@@ -159,6 +159,15 @@ export function ModalLayer({
         localWalletAvailable ? donationPassword : undefined,
       );
       await identityRepository.syncProfile(result.address);
+      await projectRepository.recordConfirmedDonation({
+        projectId: modal.type === "donate" ? modal.project.id : "",
+        walletAddress: result.address,
+        amountTx: amount,
+        txHash: result.txHash,
+        txUsdRate: txUsdRate ?? 0,
+      }).catch(() => {
+        // The relayer will reconcile the confirmed transaction if the immediate write is unavailable.
+      });
       setTransactionHash(result.txHash);
       setConfirmed(true);
       window.dispatchEvent(new CustomEvent("soundfaith-data-changed"));

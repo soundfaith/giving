@@ -34,22 +34,23 @@ const donorClients = await Promise.all(donorWallets.map((wallet) => SigningCosmW
 
 const projectDefinitions = [
   ['Harbor Light Church', 'Tacoma, WA', 'A clearer sound for Sunday', 'Sound & AV', 1, 0],
-  ['New Hope Chapel', 'Boise, ID', 'Safe steps into the gathering hall', 'Facilities & Maintenance', 1, 1],
-  ['Grace Community Church', 'Austin, TX', 'A welcoming worship space', 'Worship & Gathering', 2, 2],
-  ['St. Mark Fellowship', 'Cleveland, OH', 'Repair the community room roof', 'Facilities & Maintenance', 2, 3],
-  ['Riverside Church', 'Portland, OR', 'Project the words for every voice', 'Sound & AV', 3, 4],
-  ['Open Door Parish', 'Raleigh, NC', 'A table for neighborhood meals', 'Community & Outreach', 5, 0],
+  ['New Hope Chapel', 'Boise, ID', 'Safe steps into the gathering hall', 'Facilities & Maintenance', 2, 1],
+  ['Grace Community Church', 'Austin, TX', 'A welcoming worship space', 'Worship & Gathering', 3, 2],
+  ['St. Mark Fellowship', 'Cleveland, OH', 'Repair the community room roof', 'Facilities & Maintenance', 4, 3],
+  ['Riverside Church', 'Portland, OR', 'Project the words for every voice', 'Sound & AV', 5, 4],
+  ['Open Door Parish', 'Raleigh, NC', 'A table for neighborhood meals', 'Community & Outreach', 6, 0],
   ['Cedar Grove Church', 'Madison, WI', 'Lights for the gathering room', 'Worship & Gathering', 7, 1],
-  ['Beacon Hill Church', 'Denver, CO', 'Accessible entry improvements', 'Facilities & Maintenance', 10, 2],
-  ['Common Ground Chapel', 'Richmond, VA', 'A stronger room for youth nights', 'Community & Outreach', 25, 3],
-  ['Good Shepherd Church', 'Savannah, GA', 'Replace the aging sound console', 'Sound & AV', 50, 4],
+  ['Beacon Hill Church', 'Denver, CO', 'Accessible entry improvements', 'Facilities & Maintenance', 8, 2],
+  ['Common Ground Chapel', 'Richmond, VA', 'A stronger room for youth nights', 'Community & Outreach', 9, 3],
+  ['Good Shepherd Church', 'Savannah, GA', 'Replace the aging sound console', 'Sound & AV', 10, 4],
 ] as const
 
 const goalAmounts = projectDefinitions.map(([, , , , goal]) => goal)
-const donationAmounts = [20, 20, 20, 20, 50, 50, 50, 50, 50, 50]
-const donationWalletIndexes = [0, 1, 2, 3, 4, 4, 4, 4, 4, 4]
+const donationAmounts = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+const donationWalletIndexes = [1, 2, 3, 4, 0, 2, 3, 4, 0, 1]
 const seedRun = BigInt(Date.now()).toString(16).slice(-12).padStart(12, '0')
 const projectIds = projectDefinitions.map((_, index) => `70000000-0000-4000-8000-${(BigInt(`0x${seedRun}`) + BigInt(index)).toString(16).padStart(12, '0')}`)
+const chainProjectIds = projectDefinitions.map((_, index) => `soundfaith:mvp-${String(index + 1).padStart(2, '0')}`)
 
 async function listFiles(directory: string) {
   return (await fs.readdir(directory, { withFileTypes: true }))
@@ -81,6 +82,10 @@ const txUsdRate = Number(currentRate.tx_usd_rate)
 if (!Number.isFinite(txUsdRate) || txUsdRate <= 0) throw new Error('The current TX/USD rate is invalid.')
 
 await removeStorageObjects()
+const { error: oldDonationError } = await supabase.from('donations').delete().not('id', 'is', null)
+if (oldDonationError) throw oldDonationError
+const { error: oldProjectError } = await supabase.from('projects').delete().not('id', 'is', null)
+if (oldProjectError) throw oldProjectError
 const projects = []
 for (let index = 0; index < projectDefinitions.length; index += 1) {
   const [churchName, location, title, category, goalTx, ownerIndex] = projectDefinitions[index]
@@ -90,12 +95,14 @@ for (let index = 0; index < projectDefinitions.length; index += 1) {
   for (let imageIndex = 0; imageIndex < imageFiles.length; imageIndex += 1) {
     const source = imageFiles[imageIndex]
     const objectPath = `${projectId}/${imageIndex}-${path.basename(source)}`
-    const { error } = await supabase.storage.from('project-photos').upload(objectPath, await fs.readFile(source), { upsert: true, contentType: 'image/jpeg' })
+    const contentType = path.extname(source).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg'
+    const { error } = await supabase.storage.from('project-photos').upload(objectPath, await fs.readFile(source), { upsert: true, contentType })
     if (error) throw error
     imageUrls.push(`${supabaseUrl}/storage/v1/object/public/project-photos/${objectPath}`)
   }
   projects.push({
     id: projectId,
+    chain_project_id: chainProjectIds[index],
     church_name: churchName,
     location,
     title,
@@ -112,20 +119,23 @@ for (let index = 0; index < projectDefinitions.length; index += 1) {
 const { error: projectError } = await supabase.from('projects').insert(projects)
 if (projectError) throw projectError
 
-if (validator) {
-  try {
-    await ownerClient.execute(ownerAccount.address, contractAddress, { configure_staking: { validator } }, fee, 'SoundFaith MVP staking configuration')
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    if (!message.toLowerCase().includes('already')) throw error
-  }
-}
+await ownerClient.execute(ownerAccount.address, contractAddress, {
+  register_partner: {
+    partner: {
+      id: 'soundfaith',
+      active: true,
+      kyb_approved: true,
+      approved_wallets: [ownerAccount.address, ...donorAccounts.map((account) => account.address)],
+      metadata: 'SoundFaith MVP partner registry entry',
+    },
+  },
+}, fee, 'SoundFaith MVP partner registration')
 
 for (let index = 0; index < projects.length; index += 1) {
   const project = projects[index]
   try {
     const result = await ownerClient.execute(ownerAccount.address, contractAddress, {
-      register_project: { project: { id: project.id, goal_micro_tx: String(Math.ceil((goalAmounts[index] / txUsdRate) * 1_000_000)), status: 'active', metadata_token_id: '', beneficiary: project.owner_wallet_address } },
+      register_project: { project: { id: project.chain_project_id, goal: String(Math.ceil((goalAmounts[index] / txUsdRate) * 1_000_000)), status: 'active', metadata_uri: null, platform_id: 'soundfaith', fee_bps: null, expires_at: null, beneficiary: project.owner_wallet_address } },
     }, fee, 'SoundFaith MVP project registration')
     console.log(`Registered project ${index + 1}/10: ${result.transactionHash}`)
   } catch (error) {
@@ -138,13 +148,14 @@ for (let index = 0; index < projects.length; index += 1) {
   const amount = donationAmounts[index]
   const donorIndex = donationWalletIndexes[index]
   const donor = donorAccounts[donorIndex]
-  const result = await donorClients[donorIndex].execute(donor.address, contractAddress, { donate: { project_id: projectIds[index] } }, fee, 'SoundFaith MVP donation', [{ denom: nativeDenom, amount: String(amount * 1_000_000) }])
+  const result = await donorClients[donorIndex].execute(donor.address, contractAddress, { donate: { project_id: projects[index].chain_project_id } }, fee, 'SoundFaith MVP donation', [{ denom: nativeDenom, amount: String(Math.round(amount * 1_000_000)) }])
   const { error: donationError } = await supabase.from('donations').upsert({ project_id: projectIds[index], wallet_address: donor.address, amount_tx: amount, tx_usd_rate: txUsdRate, amount_usd: amount * txUsdRate, tx_hash: result.transactionHash, network: 'coreum-testnet' }, { onConflict: 'tx_hash' })
   if (donationError) throw donationError
   console.log(`Donated ${amount} TX to project ${index + 1}/10: ${result.transactionHash}`)
 }
 
-for (let index = 0; index < projectIds.length; index += 1) {
-  const onChain = await queryClient.queryContractSmart(contractAddress, { project: { project_id: projectIds[index] } }) as { raised_micro_tx: string; status: string }
-  console.log(`Verified project ${index + 1}/10: ${Number(onChain.raised_micro_tx) / 1_000_000} TX, ${onChain.status}`)
+for (let index = 0; index < chainProjectIds.length; index += 1) {
+  const onChain = await queryClient.queryContractSmart(contractAddress, { project: { project_id: chainProjectIds[index] } }) as { raised_micro_tx?: string; raised?: string; status?: string; project?: { raised_micro_tx?: string; raised?: string; status?: string } }
+  const project = onChain.project ?? onChain
+  console.log(`Verified project ${index + 1}/10: ${Number(project.raised_micro_tx ?? project.raised ?? '0') / 1_000_000} TX, ${project.status}`)
 }

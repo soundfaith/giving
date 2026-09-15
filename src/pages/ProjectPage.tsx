@@ -60,7 +60,7 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
       }
 
       try {
-        const onChain = await getProjectOnChain(project.id);
+        const onChain = await getProjectOnChain(project.chainProjectId ?? project.id);
         if (active) setContractState(onChain);
       } catch {
         if (active) setContractState(null);
@@ -196,7 +196,7 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
         <div className="donation-history-section">
           <p className="eyebrow">Donation history</p>
           <div className="donation-history-list">
-            {donations.length ? donations.map((donation) => <article className="donation-history-card" key={donation.id}><div className="donation-history-icon"><ArrowUpRight size={15} /></div><div className="donation-history-main"><strong>{Number(donation.amount_tx ?? 0).toFixed(2)} TX</strong><span>{new Date(donation.created_at).toLocaleDateString()}</span></div><div className="donation-history-value">{donation.amount_usd ? `$${Number(donation.amount_usd).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "TX"}</div><a className="icon-button" href={explorerTx(donation.tx_hash)} target="_blank" rel="noreferrer" title="Open transaction in explorer" aria-label="Open transaction in explorer"><ExternalLink size={14} /></a></article>) : <p className="profile-empty">No on-chain donations yet.</p>}
+            {donations.length ? donations.map((donation) => <article className="donation-history-card" key={donation.id}><div className="donation-history-icon"><ArrowUpRight size={15} /></div><div className="donation-history-main"><strong>{Number(donation.amount_tx ?? 0).toFixed(2)} TX</strong><span>{new Date(donation.created_at).toLocaleDateString()}</span></div><div className="donation-history-value">{donation.amount_usd ? `$${Number(donation.amount_usd).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "TX"}</div>{donation.tx_hash ? <a className="icon-button" href={explorerTx(donation.tx_hash)} target="_blank" rel="noreferrer" title="Open transaction in explorer" aria-label="Open transaction in explorer"><ExternalLink size={14} /></a> : <span className="donation-pending">Pending chain confirmation</span>}</article>) : <p className="profile-empty">No on-chain donations yet.</p>}
           </div>
         </div>
       </div>

@@ -2,6 +2,8 @@
 
 This guide installs the SoundFaith legacy Node.js relayer on a Raspberry Pi 4 as a continuously running, outbound-only worker.
 
+> **Migration status (2026-09-15):** Do not deploy or restart this worker against the white-label protocol yet. The current relayer still sends the legacy project-registration message and assumes the old Supabase UUID project ID. Update and test `scripts/coreum-relayer.ts` together with the protocol ABI before changing the Pi environment or service.
+
 The Pi watches Supabase for projects in `approved_pending_chain`, registers those projects on the Coreum contract, and then activates them in Supabase. It does not accept web requests and does not need a public IP address or router port forwarding.
 
 ## 1. Understand The Network Model
