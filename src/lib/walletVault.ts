@@ -6,7 +6,7 @@ const databaseName = "soundfaith-wallet";
 const storeName = "vaults";
 const activeWalletKey = "soundfaith-active-wallet";
 const chainId = import.meta.env.VITE_COREUM_CHAIN_ID ?? "coreum-testnet-1";
-const prefix = "testcore";
+const prefix = import.meta.env.VITE_COREUM_NETWORK === "mainnet" ? "core" : "testcore";
 const hdPath = stringToPath("m/44'/990'/0'/0/0");
 const biometricCredentialKey = "soundfaith-biometric-credential";
 
@@ -150,7 +150,7 @@ async function purgeUnsupportedVaults(database: IDBDatabase) {
     const request = objectStore.getAll();
     request.onsuccess = () => {
       const activeId = window.localStorage.getItem(activeWalletKey);
-      (request.result as StoredVault[]).filter((vault) => vault.id === "coreum-testnet" || !vault.serialization.startsWith("passkey-v1:")).forEach((vault) => {
+      (request.result as StoredVault[]).filter((vault) => vault.id === "coreum-testnet" || (!vault.serialization.startsWith("passkey-v1:") && !vault.serialization.startsWith("password-v1:"))).forEach((vault) => {
         objectStore.delete(vault.id);
         if (vault.id === activeId) clearActiveBrowserWallet();
       });
@@ -351,7 +351,20 @@ export async function createPasswordBrowserWallet(name = "TX wallet", password?:
 
 export async function hasPasskeyWallet() {
   const serialization = (await readVault())?.serialization;
-  return serialization?.startsWith("passkey-v1:") || serialization?.startsWith("password-v1:") || false;
+  return serialization?.startsWith("passkey-v1:") || false;
+}
+
+export async function getActiveBrowserWalletSecurity(): Promise<"passkey" | "password" | null> {
+  const serialization = (await readVault())?.serialization;
+  if (serialization?.startsWith("passkey-v1:")) return "passkey";
+  if (serialization?.startsWith("password-v1:")) return "password";
+  return null;
+}
+
+export function isPasskeyFallbackError(error: unknown) {
+  const name = error instanceof DOMException ? error.name : "";
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("prf") || name === "NotSupportedError" || name === "SecurityError";
 }
 
 export async function unlockBrowserWallet() {
@@ -361,7 +374,7 @@ export async function unlockBrowserWallet() {
     const envelope = JSON.parse(vault.serialization.slice("passkey-v1:".length)) as PasskeyEnvelope;
     const walletSecret = await unwrapWalletSecret(vault.serialization);
     const wallet = envelope.walletKind === "private-key"
-      ? await DirectSecp256k1Wallet.fromKey(fromHex(await decryptWalletPayload(envelope.wallet, walletSecret)), "testcore")
+      ? await DirectSecp256k1Wallet.fromKey(fromHex(await decryptWalletPayload(envelope.wallet, walletSecret)), prefix)
       : await DirectSecp256k1HdWallet.deserialize(envelope.wallet, walletSecret);
     const [{ address }] = await wallet.getAccounts();
     if (address !== vault.address) throw new Error("Passkey wallet integrity check failed. Re-import the recovery phrase for this wallet.");

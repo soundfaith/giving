@@ -17,18 +17,19 @@ import {
   createPasskeyBrowserWallet,
   createPasswordBrowserWallet,
   exportBrowserWallet,
-  hasPasskeyWallet,
   getBrowserWalletAddress,
   importBrowserWallet,
   importBrowserWalletMnemonic,
   importBrowserWalletMnemonicWithPassword,
   clearWalletSession,
+  getActiveBrowserWalletSecurity,
+  isPasskeyFallbackError,
 } from "../lib/walletVault";
 import { donateWithWallet, friendlyWalletError, getCoreumBalance, getProjectOnChain } from "../lib/wallet";
 
 export type Modal =
   | { type: "wallet" }
-  | { type: "wallet-setup"; walletAddress?: string | null }
+  | { type: "wallet-setup"; walletAddress?: string | null; project?: Project }
   | { type: "account" }
   | { type: "church" }
   | { type: "project"; project: Project }
@@ -55,7 +56,7 @@ export function ModalLayer({
   const [message, setMessage] = useState("");
   const [transactionHash, setTransactionHash] = useState("");
   const [localWalletAvailable, setLocalWalletAvailable] = useState(false);
-  const [passkeyWallet, setPasskeyWallet] = useState(false);
+  const [walletSecurity, setWalletSecurity] = useState<"passkey" | "password" | null>(null);
   const [profile, setProfile] = useState<{
     email?: string | null;
     wallet_address?: string | null;
@@ -104,15 +105,15 @@ export function ModalLayer({
       Promise.allSettled([
         getBrowserWalletAddress(),
         identityRepository.getTxExchangeRate(),
-        hasPasskeyWallet(),
+        getActiveBrowserWalletSecurity(),
         getProjectOnChain(modal.project.chainProjectId ?? modal.project.id),
-      ]).then(async ([addressResult, rateResult, passkeyResult, projectResult]) => {
+      ]).then(async ([addressResult, rateResult, securityResult, projectResult]) => {
         if (addressResult.status === "fulfilled") {
           setLocalWalletAvailable(Boolean(addressResult.value));
           setBalance(addressResult.value ? await getCoreumBalance(addressResult.value) : null);
         }
         if (rateResult.status === "fulfilled") setTxUsdRate(rateResult.value.tx_usd_rate);
-        if (passkeyResult.status === "fulfilled") setPasskeyWallet(passkeyResult.value);
+        if (securityResult.status === "fulfilled") setWalletSecurity(securityResult.value);
         if (projectResult.status === "fulfilled") {
           const onChainProject = projectResult.value;
           const remainingMicroTx = BigInt(onChainProject.goal_micro_tx) - BigInt(onChainProject.raised_micro_tx);
@@ -210,6 +211,10 @@ export function ModalLayer({
     }
   };
   const requestDonationUnlock = () => void donate();
+  const finishWalletSetup = () => {
+    if (modal.type === "wallet-setup" && modal.project) onDonate(modal.project);
+    else close();
+  };
   const updateChurchPhotos = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedPhotos = Array.from(event.target.files ?? []);
     if (selectedPhotos.length > 3) {
@@ -288,11 +293,11 @@ export function ModalLayer({
       }));
       setWalletExists(true);
       window.dispatchEvent(new Event("soundfaith-wallet-changed"));
-      close();
+      finishWalletSetup();
     } catch (error) {
       const name = error instanceof DOMException ? error.name : "";
       const detail = error instanceof Error ? error.message : "";
-      if (detail.includes("PRF")) {
+      if (isPasskeyFallbackError(error)) {
         const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
         if (!password) {
           setMessage("Wallet creation was cancelled.");
@@ -308,7 +313,7 @@ export function ModalLayer({
         setProfile((current) => ({ ...(current ?? {}), wallet_address: fallback.address }));
         setWalletExists(true);
         window.dispatchEvent(new Event("soundfaith-wallet-changed"));
-        close();
+        finishWalletSetup();
         return;
       }
       setMessage(
@@ -366,10 +371,10 @@ export function ModalLayer({
       setWalletExists(true);
       window.dispatchEvent(new Event("soundfaith-wallet-changed"));
       setMnemonic("");
-      close();
+      finishWalletSetup();
     } catch (error) {
       const detail = error instanceof Error ? error.message : "";
-      if (detail.includes("PRF")) {
+      if (isPasskeyFallbackError(error)) {
         const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
         if (!password) { setMessage("Wallet import was cancelled."); return; }
         const confirmation = window.prompt("Confirm your wallet password.");
@@ -380,7 +385,7 @@ export function ModalLayer({
         setWalletExists(true);
         window.dispatchEvent(new Event("soundfaith-wallet-changed"));
         setMnemonic("");
-        close();
+        finishWalletSetup();
         return;
       }
       setMessage(
@@ -966,7 +971,7 @@ export function ModalLayer({
               >
                   {loading
                     ? "Preparing contribution..."
-                    : passkeyWallet ? "Continue with passkey" : `Continue with ${Number.isFinite(amount) && amount > 0 ? `${amount} TX` : "custom amount"}`}{" "}
+                    : walletSecurity === "passkey" ? "Continue with passkey" : walletSecurity === "password" ? "Unlock wallet" : `Continue with ${Number.isFinite(amount) && amount > 0 ? `${amount} TX` : "custom amount"}`}{" "}
                 <ArrowUpRight size={16} />
               </button>
               {message && <p className="modal-footnote">{message}</p>}

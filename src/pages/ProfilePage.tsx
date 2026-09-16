@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowUpRight, Bell, Check, Copy, Download, Droplets, Eye, Mo
 import { getViewerRole } from "../lib/admin";
 import { identityRepository, type Notification } from "../lib/supabase";
 import { getCoreumBalances } from "../lib/wallet";
-import { clearWalletSession, createPasskeyBrowserWallet, createPasswordBrowserWallet, exportBrowserWallet, getBrowserWalletAddress, getBrowserWallets, hasBiometricUnlock, hasPasskeyWallet, importBrowserWallet, importBrowserWalletMnemonic, importBrowserWalletMnemonicWithPassword, importBrowserWalletPrivateKey, registerBiometricUnlock, removeBrowserWallet, revealBrowserWalletMnemonic, switchBrowserWallet } from "../lib/walletVault";
+import { clearWalletSession, createPasskeyBrowserWallet, createPasswordBrowserWallet, exportBrowserWallet, getBrowserWalletAddress, getBrowserWallets, hasBiometricUnlock, hasPasskeyWallet, importBrowserWallet, importBrowserWalletMnemonic, importBrowserWalletMnemonicWithPassword, importBrowserWalletPrivateKey, isPasskeyFallbackError, registerBiometricUnlock, removeBrowserWallet, revealBrowserWalletMnemonic, switchBrowserWallet } from "../lib/walletVault";
 
 const chainExplorerBase = import.meta.env.VITE_COREUM_NETWORK === "mainnet" ? "https://explorer.coreum.com" : "https://explorer.testnet-1.coreum.dev";
 const txFaucetUrl = "https://docs.tx.org/docs/next/tools-and-ecosystem/faucet#faucet";
@@ -45,14 +45,20 @@ export function ProfilePage() {
     setLoading(true); setMessage("");
     try {
       const dashboard = await identityRepository.getDashboard();
-      const [localAddress, localWallets, viewerRole, notifications, localPasskeyWallet] = await Promise.all([getBrowserWalletAddress(), getBrowserWallets(dashboard.profile?.email ?? undefined), getViewerRole(), identityRepository.getNotifications(0, 20), hasPasskeyWallet()]);
-      setProfile(dashboard.profile); setHandleDraft(dashboard.profile?.handle ?? ""); setWallets(localWallets); setRole(viewerRole);
+      setProfile(dashboard.profile); setHandleDraft(dashboard.profile?.handle ?? "");
+      const [localAddressResult, localWalletsResult, viewerRoleResult, notificationsResult, localPasskeyWalletResult] = await Promise.allSettled([getBrowserWalletAddress(), getBrowserWallets(dashboard.profile?.email ?? undefined), getViewerRole(), identityRepository.getNotifications(0, 20), hasPasskeyWallet()]);
+      const localAddress = localAddressResult.status === "fulfilled" ? localAddressResult.value : null;
+      if (localWalletsResult.status === "fulfilled") setWallets(localWalletsResult.value);
+      if (viewerRoleResult.status === "fulfilled") setRole(viewerRoleResult.value);
+      if (notificationsResult.status === "fulfilled") setUnreadNotifications(notificationsResult.value.filter((item) => !item.read_at));
+      if (localPasskeyWalletResult.status === "fulfilled") setPasskeyWallet(localPasskeyWalletResult.value);
       setLocalWalletAddress(localAddress);
-      setPasskeyWallet(localPasskeyWallet);
-      setUnreadNotifications(notifications.filter((item) => !item.read_at));
-      const address = localAddress;
-      const balances = address ? await getCoreumBalances(address) : null;
-      setBalance(balances?.native ?? null);
+      try {
+        const balances = localAddress ? await getCoreumBalances(localAddress) : null;
+        setBalance(balances?.native ?? null);
+      } catch {
+        setBalance(null);
+      }
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to load profile"); }
     finally { setLoading(false); }
   };
@@ -76,38 +82,44 @@ export function ProfilePage() {
   const switchWallet = async (id: string) => { try { const next = await switchBrowserWallet(id); await identityRepository.syncProfile(next.address); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to switch wallet"); } };
   const createWallet = async () => {
     try {
-      await createPasskeyBrowserWallet(walletName, profile?.email ?? undefined);
+      const created = await createPasskeyBrowserWallet(walletName, profile?.email ?? undefined);
+      await identityRepository.syncProfile(created.address);
+      window.dispatchEvent(new Event("soundfaith-wallet-changed"));
       setWalletName(""); closeModal(); await refresh();
     } catch (error) {
       const detail = error instanceof Error ? error.message : "";
-      if (!detail.includes("PRF")) { setMessage(detail || "Unable to create wallet"); return; }
+      if (!isPasskeyFallbackError(error)) { setMessage(detail || "Unable to create wallet"); return; }
       const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
       if (!password) { setMessage("Wallet creation was cancelled."); return; }
       const confirmation = window.prompt("Confirm your wallet password.");
       if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
-      await createPasswordBrowserWallet(walletName, password, profile?.email ?? undefined);
+      const created = await createPasswordBrowserWallet(walletName, password, profile?.email ?? undefined);
+      await identityRepository.syncProfile(created.address);
+      window.dispatchEvent(new Event("soundfaith-wallet-changed"));
       setWalletName(""); closeModal(); await refresh();
     }
   };
-  const restoreFromMnemonic = async () => { try { await importBrowserWalletMnemonic(restoreMnemonic, null, walletName || "Recovered wallet", profile?.email ?? undefined); setRestoreMnemonic(""); setWalletName(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to restore wallet"); } };
+  const restoreFromMnemonic = async () => { try { const restored = await importBrowserWalletMnemonic(restoreMnemonic, null, walletName || "Recovered wallet", profile?.email ?? undefined); await identityRepository.syncProfile(restored.address); window.dispatchEvent(new Event("soundfaith-wallet-changed")); setRestoreMnemonic(""); setWalletName(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to restore wallet"); } };
   const createFromMnemonic = async () => {
-    try { await importBrowserWalletMnemonic(mnemonicWords.join(" "), null, walletName || "Recovered wallet", profile?.email ?? undefined); closeModal(); await refresh(); }
+    try { const restored = await importBrowserWalletMnemonic(mnemonicWords.join(" "), null, walletName || "Recovered wallet", profile?.email ?? undefined); await identityRepository.syncProfile(restored.address); window.dispatchEvent(new Event("soundfaith-wallet-changed")); closeModal(); await refresh(); }
     catch (error) {
       const detail = error instanceof Error ? error.message : "";
-      if (!detail.includes("PRF")) { setMessage(detail || "Unable to import mnemonic"); return; }
+      if (!isPasskeyFallbackError(error)) { setMessage(detail || "Unable to import mnemonic"); return; }
       const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
       if (!password) { setMessage("Wallet import was cancelled."); return; }
       const confirmation = window.prompt("Confirm your wallet password.");
       if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
-      await importBrowserWalletMnemonicWithPassword(mnemonicWords.join(" "), password, null, walletName || "Recovered wallet", profile?.email ?? undefined);
+      const restored = await importBrowserWalletMnemonicWithPassword(mnemonicWords.join(" "), password, null, walletName || "Recovered wallet", profile?.email ?? undefined);
+      await identityRepository.syncProfile(restored.address);
+      window.dispatchEvent(new Event("soundfaith-wallet-changed"));
       closeModal(); await refresh();
     }
   };
-  const importPrivateKey = async () => { try { await importBrowserWalletPrivateKey(privateKey, walletName || "Imported wallet", profile?.email ?? undefined); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import private key"); } };
+  const importPrivateKey = async () => { try { const imported = await importBrowserWalletPrivateKey(privateKey, walletName || "Imported wallet", profile?.email ?? undefined); await identityRepository.syncProfile(imported.address); window.dispatchEvent(new Event("soundfaith-wallet-changed")); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import private key"); } };
   const updateMnemonicLength = (length: number) => { setMnemonicLength(length); setMnemonicWords((current) => Array.from({ length }, (_, index) => current[index] ?? "")); };
   const pasteMnemonic = (event: React.ClipboardEvent<HTMLInputElement>) => { const pasted = event.clipboardData.getData("text").trim().split(/\s+/).filter(Boolean); if (pasted.length > 1) { event.preventDefault(); updateMnemonicLength(pasted.length); setMnemonicWords(pasted); } };
   const selectBackup = (event: ChangeEvent<HTMLInputElement>) => { setBackupFile(event.target.files?.[0] ?? null); event.target.value = ""; };
-  const importBackup = async () => { if (!backupFile) return; try { await importBrowserWallet(backupFile, null, walletName || undefined, profile?.email ?? undefined); setWalletName(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import wallet backup"); } };
+  const importBackup = async () => { if (!backupFile) return; try { const imported = await importBrowserWallet(backupFile, null, walletName || undefined, profile?.email ?? undefined); await identityRepository.syncProfile(imported.address); window.dispatchEvent(new Event("soundfaith-wallet-changed")); setWalletName(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import wallet backup"); } };
   const copyMnemonic = async () => { if (mnemonic && mnemonicRevealed) { await navigator.clipboard.writeText(mnemonic); setMnemonicCopied(true); window.setTimeout(() => setMnemonicCopied(false), 2500); } };
   const exportWallet = async () => { if (!activeWallet) { setMessage("Create or select a wallet first."); return; } try { await exportBrowserWallet(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to export wallet"); } };
   const requestTestnetFunds = async () => {

@@ -37,8 +37,6 @@ import {
   getBrowserWalletAddress,
 } from "./lib/walletVault";
 
-const rememberedSessionKey = "soundfaith-remembered-session";
-
 function readRoute() {
   const path = window.location.hash.replace(/^#\/?/, "").split("?")[0];
   if (path.startsWith("projects/"))
@@ -61,7 +59,8 @@ export default function App() {
   const mobileMenuRef = useRef<HTMLElement | null>(null);
   const [modal, setModal] = useState<Modal | null>(null);
   const [projectList, setProjectList] = useState<Project[]>(fallbackProjects);
-  const [authUser, setAuthUser] = useState<string | null>(() => window.localStorage.getItem(rememberedSessionKey));
+  const [authUser, setAuthUser] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">(() => window.localStorage.getItem("soundfaith-theme") === "dark" ? "dark" : "light");
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -144,11 +143,12 @@ export default function App() {
     const handleSession = async (email: string | null) => {
       if (!active) return;
       if (!email) {
-        setAuthUser(window.localStorage.getItem(rememberedSessionKey));
+        setAuthUser(null);
+        setAuthLoading(false);
         return;
       }
-      window.localStorage.setItem(rememberedSessionKey, email);
       setAuthUser(email);
+      setAuthLoading(false);
       const profile = await identityRepository.syncProfile().catch(() => null);
       const activeWallet = await getActiveBrowserWallet().catch(() => null);
       const walletAddress = profile?.wallet_address ?? activeWallet?.address ?? null;
@@ -175,6 +175,7 @@ export default function App() {
     if (!supabase)
       return () => {
         active = false;
+        setAuthLoading(false);
       };
     supabase.auth
       .getUser()
@@ -198,13 +199,13 @@ export default function App() {
     window.location.hash = "#/churches";
   };
   const ensureWalletForAction = async (action: "churches" | "donate", project?: Project) => {
-    if (!authUser) {
+    if (!authUser && action === "churches") {
       setModal({ type: "wallet" });
       return;
     }
     const address = await getBrowserWalletAddress().catch(() => null);
     if (!address) {
-      setModal({ type: "wallet-setup", walletAddress: null });
+      setModal({ type: "wallet-setup", walletAddress: null, project: action === "donate" ? project : undefined });
       return;
     }
     if (action === "donate" && project) setModal({ type: "donate", project });
