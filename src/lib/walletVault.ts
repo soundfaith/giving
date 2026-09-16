@@ -20,6 +20,8 @@ type StoredVault = {
 };
 
 type PasskeyEnvelope = { credentialId: string; salt: string; iv: string; data: string; walletKind?: "mnemonic" | "private-key"; wallet: string };
+type PasswordEnvelope = { salt: string; iv: string; data: string; walletKind?: "mnemonic" | "private-key"; wallet: string };
+let sessionWallet: { id: string; wallet: DirectSecp256k1HdWallet | DirectSecp256k1Wallet; address: string } | null = null;
 
 function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
@@ -68,9 +70,9 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
   }
   if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
   const credentialId = base64Url(new Uint8Array(credential.rawId));
+  window.localStorage.setItem(biometricCredentialKey, credentialId);
   const result = (credential.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf?.results?.first;
   if (!result) throw new Error("This device completed passkey verification, but its passkey provider does not support secure wallet storage (PRF). Try Chrome on Android, update the browser and screen lock, or import a recovery phrase instead.");
-  window.localStorage.setItem(biometricCredentialKey, credentialId);
   return new Uint8Array(result);
 }
 
@@ -92,6 +94,25 @@ async function decryptWalletPayload(payload: string, secret: string) {
   const parsed = JSON.parse(payload.slice("payload-v1:".length)) as { iv: string; data: string };
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "AES-GCM" }, false, ["decrypt"]);
   const data = await crypto.subtle.decrypt({ name: "AES-GCM", iv: base64ToBytes(parsed.iv) as unknown as BufferSource }, key, base64ToBytes(parsed.data) as unknown as BufferSource);
+  return new TextDecoder().decode(data);
+}
+
+async function passwordKey(password: string, salt: Uint8Array, usage: KeyUsage[]) {
+  const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: salt as unknown as BufferSource, iterations: 250000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, usage);
+}
+
+async function encryptWithPassword(payload: string, password: string) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await passwordKey(password, salt, ["encrypt"]);
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, key, new TextEncoder().encode(payload));
+  return { salt: bytesToBase64(salt), iv: bytesToBase64(iv), data: bytesToBase64(new Uint8Array(data)) };
+}
+
+async function decryptWithPassword(envelope: { salt: string; iv: string; data: string }, password: string) {
+  const key = await passwordKey(password, base64ToBytes(envelope.salt), ["decrypt"]);
+  const data = await crypto.subtle.decrypt({ name: "AES-GCM", iv: base64ToBytes(envelope.iv) as unknown as BufferSource }, key, base64ToBytes(envelope.data) as unknown as BufferSource);
   return new TextDecoder().decode(data);
 }
 
@@ -171,7 +192,7 @@ async function listVaults() {
     const request = database.transaction(storeName, "readonly").objectStore(storeName).getAll();
     request.onsuccess = async () => {
       const vaults = (request.result as StoredVault[]).filter((vault) => vault.id !== "coreum-testnet");
-      const supported = vaults.filter((vault) => vault.serialization.startsWith("passkey-v1:"));
+      const supported = vaults.filter((vault) => vault.serialization.startsWith("passkey-v1:") || vault.serialization.startsWith("password-v1:"));
       resolve(supported.map((vault) => ({ ...vault, name: vault.name ?? "TX wallet" })));
     };
     request.onerror = () => reject(request.error ?? new Error("Unable to read local wallet storage"));
@@ -201,6 +222,11 @@ function displayWalletName(name?: string) {
 
 export function clearActiveBrowserWallet() {
   window.localStorage.removeItem(activeWalletKey);
+  sessionWallet = null;
+}
+
+export function clearWalletSession() {
+  sessionWallet = null;
 }
 
 export type BrowserWallet = { id: string; name: string; address: string; createdAt: string };
@@ -220,6 +246,7 @@ export async function getBrowserWallets(ownerEmail?: string): Promise<BrowserWal
 export async function switchBrowserWallet(id: string) {
   const wallet = await readVault(id);
   if (!wallet) throw new Error("That wallet is not available on this device.");
+  if (sessionWallet?.id !== wallet.id) sessionWallet = null;
   setActiveWallet(wallet.id);
   return { id: wallet.id, name: displayWalletName(wallet.name), address: wallet.address };
 }
@@ -258,6 +285,7 @@ export async function removeBrowserWallet(id: string) {
     request.onerror = () => reject(request.error ?? new Error("Unable to remove local wallet"));
   });
   if (window.localStorage.getItem(activeWalletKey) === id) clearActiveBrowserWallet();
+  if (sessionWallet?.id === id) sessionWallet = null;
 }
 
 export async function getActiveBrowserWallet() {
@@ -295,6 +323,16 @@ async function storePasskeyWallet(wallet: string, address: string, name: string,
   return { id, address };
 }
 
+async function storePasswordWallet(wallet: string, address: string, name: string, password: string | undefined, ownerEmail: string | undefined, walletKind: PasswordEnvelope["walletKind"] = "mnemonic", walletSecret = randomSecret()) {
+  if (!password?.trim()) throw new Error("A wallet password is required.");
+  const encryptedSecret = await encryptWithPassword(walletSecret, password);
+  const storedWallet = walletKind === "private-key" ? await encryptWalletPayload(wallet, walletSecret) : wallet;
+  const id = `wallet-${crypto.randomUUID()}`;
+  await writeVault({ id, name: name.trim() || "TX wallet", ownerEmail, address, serialization: `password-v1:${JSON.stringify({ ...encryptedSecret, wallet: storedWallet, walletKind })}`, createdAt: new Date().toISOString() });
+  setActiveWallet(id);
+  return { id, address };
+}
+
 export async function createPasskeyBrowserWallet(name = "TX wallet", ownerEmail?: string) {
   const wallet = await DirectSecp256k1HdWallet.generate(12, walletOptions());
   const [{ address }] = await wallet.getAccounts();
@@ -303,8 +341,17 @@ export async function createPasskeyBrowserWallet(name = "TX wallet", ownerEmail?
   return storePasskeyWallet(serialization, address, name, ownerEmail, "mnemonic", walletSecret);
 }
 
+export async function createPasswordBrowserWallet(name = "TX wallet", password?: string, ownerEmail?: string) {
+  const wallet = await DirectSecp256k1HdWallet.generate(12, walletOptions());
+  const [{ address }] = await wallet.getAccounts();
+  const walletSecret = randomSecret();
+  const serialization = await wallet.serialize(walletSecret);
+  return storePasswordWallet(serialization, address, name, password, ownerEmail, "mnemonic", walletSecret);
+}
+
 export async function hasPasskeyWallet() {
-  return (await readVault())?.serialization.startsWith("passkey-v1:") ?? false;
+  const serialization = (await readVault())?.serialization;
+  return serialization?.startsWith("passkey-v1:") || serialization?.startsWith("password-v1:") || false;
 }
 
 export async function unlockBrowserWallet() {
@@ -318,6 +365,29 @@ export async function unlockBrowserWallet() {
       : await DirectSecp256k1HdWallet.deserialize(envelope.wallet, walletSecret);
     const [{ address }] = await wallet.getAccounts();
     if (address !== vault.address) throw new Error("Passkey wallet integrity check failed. Re-import the recovery phrase for this wallet.");
+    return { wallet, address: vault.address };
+  }
+  if (vault.serialization.startsWith("password-v1:")) {
+    const envelope = JSON.parse(vault.serialization.slice("password-v1:".length)) as PasswordEnvelope;
+    if (sessionWallet?.id === vault.id) {
+      if (hasBiometricUnlock()) await verifyBiometricUnlock();
+      return { wallet: sessionWallet.wallet, address: sessionWallet.address };
+    }
+    const password = window.prompt("Enter your wallet password to unlock it on this device.");
+    if (!password) throw new Error("Wallet unlock was cancelled.");
+    let walletSecret: string;
+    try {
+      walletSecret = await decryptWithPassword(envelope, password);
+    } catch {
+      throw new Error("Incorrect wallet password.");
+    }
+    const wallet = envelope.walletKind === "private-key"
+      ? await DirectSecp256k1Wallet.fromKey(fromHex(await decryptWalletPayload(envelope.wallet, walletSecret)), prefix)
+      : await DirectSecp256k1HdWallet.deserialize(envelope.wallet, walletSecret);
+    const [{ address }] = await wallet.getAccounts();
+    if (address !== vault.address) throw new Error("Wallet integrity check failed. Restore the wallet from its recovery phrase.");
+    if (hasBiometricUnlock()) await verifyBiometricUnlock();
+    sessionWallet = { id: vault.id, wallet, address: vault.address };
     return { wallet, address: vault.address };
   }
   throw new Error("This wallet is not supported. Import its recovery phrase again to create a passkey wallet.");
@@ -363,7 +433,7 @@ export async function verifyBiometricUnlock() {
 export async function exportBrowserWallet() {
   const vault = await readVault();
   if (!vault) throw new Error("No local wallet is configured on this device.");
-  if (vault.serialization.startsWith("passkey-v1:")) await unlockBrowserWallet();
+  if (vault.serialization.startsWith("passkey-v1:") || vault.serialization.startsWith("password-v1:")) await unlockBrowserWallet();
   const blob = new Blob([JSON.stringify({ format: "soundfaith-coreum-wallet-v1", chainId, name: displayWalletName(vault.name), address: vault.address, serialization: vault.serialization }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -375,7 +445,7 @@ export async function exportBrowserWallet() {
 
 export async function importBrowserWallet(file: File, expectedAddress?: string | null, name?: string, ownerEmail?: string) {
   const parsed = JSON.parse(await file.text()) as { format?: string; name?: string; address?: string; serialization?: string };
-  if (parsed.format !== "soundfaith-coreum-wallet-v1" || !parsed.address || !parsed.serialization || !parsed.serialization.startsWith("passkey-v1:")) throw new Error("This wallet backup is not supported. Import the recovery phrase to create a new passkey wallet.");
+  if (parsed.format !== "soundfaith-coreum-wallet-v1" || !parsed.address || !parsed.serialization || (!parsed.serialization.startsWith("passkey-v1:") && !parsed.serialization.startsWith("password-v1:"))) throw new Error("This wallet backup is not supported.");
   if (expectedAddress && parsed.address !== expectedAddress) throw new Error("This backup belongs to a different wallet. Select the backup for the remembered TX address.");
   const id = `wallet-${crypto.randomUUID()}`;
   await writeVault({ id, name: name?.trim() || parsed.name || "Imported wallet", ownerEmail, address: parsed.address, serialization: parsed.serialization, createdAt: new Date().toISOString() });
@@ -389,6 +459,14 @@ export async function importBrowserWalletMnemonic(mnemonic: string, expectedAddr
   if (expectedAddress && address !== expectedAddress) throw new Error("This mnemonic belongs to a different wallet. Check the remembered TX address and try again.");
   const walletSecret = randomSecret();
   return storePasskeyWallet(await wallet.serialize(walletSecret), address, name, ownerEmail, "mnemonic", walletSecret);
+}
+
+export async function importBrowserWalletMnemonicWithPassword(mnemonic: string, password: string, expectedAddress?: string | null, name = "Recovered wallet", ownerEmail?: string) {
+  const wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic.trim(), walletOptions());
+  const [{ address }] = await wallet.getAccounts();
+  if (expectedAddress && address !== expectedAddress) throw new Error("This mnemonic belongs to a different wallet. Check the remembered TX address and try again.");
+  const walletSecret = randomSecret();
+  return storePasswordWallet(await wallet.serialize(walletSecret), address, name, password, ownerEmail, "mnemonic", walletSecret);
 }
 
 export async function importBrowserWalletPrivateKey(privateKey: string, name = "Imported wallet", ownerEmail?: string) {

@@ -15,11 +15,14 @@ import { projectCategories } from "../lib/projects";
 import { Progress, ProjectVisual } from "./ProjectPrimitives";
 import {
   createPasskeyBrowserWallet,
+  createPasswordBrowserWallet,
   exportBrowserWallet,
   hasPasskeyWallet,
   getBrowserWalletAddress,
   importBrowserWallet,
   importBrowserWalletMnemonic,
+  importBrowserWalletMnemonicWithPassword,
+  clearWalletSession,
 } from "../lib/walletVault";
 import { donateWithWallet, friendlyWalletError, getCoreumBalance, getProjectOnChain } from "../lib/wallet";
 
@@ -289,6 +292,25 @@ export function ModalLayer({
     } catch (error) {
       const name = error instanceof DOMException ? error.name : "";
       const detail = error instanceof Error ? error.message : "";
+      if (detail.includes("PRF")) {
+        const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
+        if (!password) {
+          setMessage("Wallet creation was cancelled.");
+          return;
+        }
+        const confirmation = window.prompt("Confirm your wallet password.");
+        if (password !== confirmation) {
+          setMessage("The wallet passwords did not match.");
+          return;
+        }
+        const fallback = await createPasswordBrowserWallet("TX wallet", password, ownerEmail ?? undefined);
+        await identityRepository.syncProfile(fallback.address);
+        setProfile((current) => ({ ...(current ?? {}), wallet_address: fallback.address }));
+        setWalletExists(true);
+        window.dispatchEvent(new Event("soundfaith-wallet-changed"));
+        close();
+        return;
+      }
       setMessage(
         name === "NotAllowedError"
           ? "Passkey setup was cancelled or timed out. Keep this page open and try again."
@@ -346,6 +368,21 @@ export function ModalLayer({
       setMnemonic("");
       close();
     } catch (error) {
+      const detail = error instanceof Error ? error.message : "";
+      if (detail.includes("PRF")) {
+        const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
+        if (!password) { setMessage("Wallet import was cancelled."); return; }
+        const confirmation = window.prompt("Confirm your wallet password.");
+        if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
+        const fallback = await importBrowserWalletMnemonicWithPassword(mnemonic, password, null, "Recovered wallet", ownerEmail ?? undefined);
+        await identityRepository.syncProfile(fallback.address);
+        setProfile((current) => ({ ...(current ?? {}), wallet_address: fallback.address }));
+        setWalletExists(true);
+        window.dispatchEvent(new Event("soundfaith-wallet-changed"));
+        setMnemonic("");
+        close();
+        return;
+      }
       setMessage(
         error instanceof Error ? error.message : "Unable to import mnemonic",
       );
@@ -353,6 +390,7 @@ export function ModalLayer({
   };
   const signOut = async () => {
     await identityRepository.signOut();
+    clearWalletSession();
     close();
     window.location.hash = "#/";
     window.scrollTo(0, 0);

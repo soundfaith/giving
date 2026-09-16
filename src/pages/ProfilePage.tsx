@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowUpRight, Bell, Check, Copy, Download, Droplets, Eye, Mo
 import { getViewerRole } from "../lib/admin";
 import { identityRepository, type Notification } from "../lib/supabase";
 import { getCoreumBalances } from "../lib/wallet";
-import { createPasskeyBrowserWallet, exportBrowserWallet, getBrowserWalletAddress, getBrowserWallets, hasBiometricUnlock, hasPasskeyWallet, importBrowserWallet, importBrowserWalletMnemonic, importBrowserWalletPrivateKey, registerBiometricUnlock, removeBrowserWallet, revealBrowserWalletMnemonic, switchBrowserWallet } from "../lib/walletVault";
+import { clearWalletSession, createPasskeyBrowserWallet, createPasswordBrowserWallet, exportBrowserWallet, getBrowserWalletAddress, getBrowserWallets, hasBiometricUnlock, hasPasskeyWallet, importBrowserWallet, importBrowserWalletMnemonic, importBrowserWalletMnemonicWithPassword, importBrowserWalletPrivateKey, registerBiometricUnlock, removeBrowserWallet, revealBrowserWalletMnemonic, switchBrowserWallet } from "../lib/walletVault";
 
 const chainExplorerBase = import.meta.env.VITE_COREUM_NETWORK === "mainnet" ? "https://explorer.coreum.com" : "https://explorer.testnet-1.coreum.dev";
 const txFaucetUrl = "https://docs.tx.org/docs/next/tools-and-ecosystem/faucet#faucet";
@@ -74,9 +74,35 @@ export function ProfilePage() {
   const updateHandle = async () => { try { const updated = await identityRepository.updateProfileHandle(handleDraft); setProfile((current) => ({ ...(current ?? {}), handle: updated?.handle ?? handleDraft })); closeModal(); setMessage("User name updated."); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to update user name"); } };
   const revealMnemonic = async () => { if (!activeWallet) { setMessage("Create or select a wallet first."); return; } try { setMnemonic(await revealBrowserWalletMnemonic()); setMnemonicRevealed(false); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to unlock mnemonic"); } };
   const switchWallet = async (id: string) => { try { const next = await switchBrowserWallet(id); await identityRepository.syncProfile(next.address); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to switch wallet"); } };
-  const createWallet = async () => { try { await createPasskeyBrowserWallet(walletName, profile?.email ?? undefined); setWalletName(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to create passkey wallet"); } };
+  const createWallet = async () => {
+    try {
+      await createPasskeyBrowserWallet(walletName, profile?.email ?? undefined);
+      setWalletName(""); closeModal(); await refresh();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "";
+      if (!detail.includes("PRF")) { setMessage(detail || "Unable to create wallet"); return; }
+      const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
+      if (!password) { setMessage("Wallet creation was cancelled."); return; }
+      const confirmation = window.prompt("Confirm your wallet password.");
+      if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
+      await createPasswordBrowserWallet(walletName, password, profile?.email ?? undefined);
+      setWalletName(""); closeModal(); await refresh();
+    }
+  };
   const restoreFromMnemonic = async () => { try { await importBrowserWalletMnemonic(restoreMnemonic, null, walletName || "Recovered wallet", profile?.email ?? undefined); setRestoreMnemonic(""); setWalletName(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to restore wallet"); } };
-  const createFromMnemonic = async () => { try { await importBrowserWalletMnemonic(mnemonicWords.join(" "), null, walletName || "Recovered wallet", profile?.email ?? undefined); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import mnemonic"); } };
+  const createFromMnemonic = async () => {
+    try { await importBrowserWalletMnemonic(mnemonicWords.join(" "), null, walletName || "Recovered wallet", profile?.email ?? undefined); closeModal(); await refresh(); }
+    catch (error) {
+      const detail = error instanceof Error ? error.message : "";
+      if (!detail.includes("PRF")) { setMessage(detail || "Unable to import mnemonic"); return; }
+      const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
+      if (!password) { setMessage("Wallet import was cancelled."); return; }
+      const confirmation = window.prompt("Confirm your wallet password.");
+      if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
+      await importBrowserWalletMnemonicWithPassword(mnemonicWords.join(" "), password, null, walletName || "Recovered wallet", profile?.email ?? undefined);
+      closeModal(); await refresh();
+    }
+  };
   const importPrivateKey = async () => { try { await importBrowserWalletPrivateKey(privateKey, walletName || "Imported wallet", profile?.email ?? undefined); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import private key"); } };
   const updateMnemonicLength = (length: number) => { setMnemonicLength(length); setMnemonicWords((current) => Array.from({ length }, (_, index) => current[index] ?? "")); };
   const pasteMnemonic = (event: React.ClipboardEvent<HTMLInputElement>) => { const pasted = event.clipboardData.getData("text").trim().split(/\s+/).filter(Boolean); if (pasted.length > 1) { event.preventDefault(); updateMnemonicLength(pasted.length); setMnemonicWords(pasted); } };
@@ -100,7 +126,7 @@ export function ProfilePage() {
   };
   const toggleTheme = () => { const next = theme === "light" ? "dark" : "light"; setTheme(next); document.documentElement.dataset.theme = next; window.localStorage.setItem("soundfaith-theme", next); };
   const enableBiometric = async () => { try { await registerBiometricUnlock(); setBiometric(true); setMessage("Biometric unlock enabled on this device."); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to enable biometric unlock"); } };
-  const signOut = async () => { try { await identityRepository.signOut(); window.location.hash = "#/"; window.scrollTo(0, 0); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to sign out"); } };
+  const signOut = async () => { try { await identityRepository.signOut(); clearWalletSession(); window.location.hash = "#/"; window.scrollTo(0, 0); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to sign out"); } };
   const removeWallet = async (id: string) => { if (!window.confirm("Remove this wallet from this device? The encrypted wallet backup will be deleted.")) return; try { const removedWallet = wallets.find((wallet) => wallet.id === id); await removeBrowserWallet(id); if (removedWallet?.address === localWalletAddress) { await identityRepository.clearWallet(); setProfile((current) => current ? { ...current, wallet_address: null } : current); } closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to remove wallet"); } };
   const deleteAccount = async () => { if (!window.confirm("Delete your SoundFaith account? This cannot be undone.")) return; try { await identityRepository.deleteProfile(); await identityRepository.signOut(); window.location.hash = "#/"; window.scrollTo(0, 0); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to delete account"); } };
   const markNotificationRead = async (notification: Notification) => { if (notification.read_at) return; try { await identityRepository.markNotificationRead(notification.id); setUnreadNotifications((current) => current.filter((item) => item.id !== notification.id)); window.dispatchEvent(new Event("soundfaith-notifications-changed")); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to update notification"); } };
