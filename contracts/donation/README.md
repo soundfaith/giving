@@ -24,7 +24,9 @@ This repository now includes a starter CosmWasm implementation in `src/lib.rs`. 
 {"set_project_status":{"project_id":"project-uuid","status":"active"}}
 ```
 
-The contract stores its native denomination at instantiate/migrate time: `utestcore` on testnet and `ucore` on mainnet. The current testnet deployment is code ID `3943` at `testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey`. It keeps funds in its own account/staking delegation, rejects donations above the goal, and emits the event attributes used by the manual sync flow:
+This directory contains the retired SoundFaith-specific vault implementation. It is not the active giving integration and must not receive new registrations or donations. The current giving integration uses the white-label protocol at `testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p` (code ID `3951`).
+
+The historical vault deployment was code ID `3943` at `testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey`. Its funds and projects require separate reconciliation.
 
 - `action=donation_received`
 - `project_id`

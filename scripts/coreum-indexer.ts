@@ -39,7 +39,35 @@ async function saveCursor(height: number) {
   if (error) throw error
 }
 
+async function notifyReadyClaims() {
+  const { data: projects, error } = await supabase
+    .from('projects')
+    .select('id, chain_project_id, submitted_by, title')
+    .not('submitted_by', 'is', null)
+  if (error) throw error
+  const now = Math.floor(Date.now() / 1000)
+  for (const project of projects ?? []) {
+    const response = await chain.queryContractSmart(configuredContractAddress, { project: { project_id: project.chain_project_id ?? `soundfaith:${project.id}` } }) as { project?: { status?: string; unstaking_started_at?: number | null; unbonding_seconds?: number } }
+    const onChain = response.project
+    if (onChain?.status?.toLowerCase() !== 'unstaking' || onChain.unstaking_started_at == null) continue
+    const readyAt = Number(onChain.unstaking_started_at) + Number(onChain.unbonding_seconds ?? 0)
+    if (now < readyAt) continue
+    const { data: existing, error: existingError } = await supabase.from('notifications').select('id').eq('user_id', project.submitted_by).eq('project_id', project.id).eq('kind', 'claim_ready').limit(1)
+    if (existingError) throw existingError
+    if (existing?.length) continue
+    const { error: notificationError } = await supabase.from('notifications').insert({
+      user_id: project.submitted_by,
+      kind: 'claim_ready',
+      project_id: project.id,
+      title: 'Your funds are ready',
+      message: `${project.title} is ready to claim. Open the project and select Claim funds.`,
+    })
+    if (notificationError) throw notificationError
+  }
+}
+
 async function indexDonations() {
+  await notifyReadyClaims()
   const lastHeight = await readCursor()
   const transactions = await chain.searchTx([{ key: 'wasm._contract_address', value: configuredContractAddress }]) as unknown as IndexedTransaction[]
   const candidates = transactions
@@ -58,7 +86,7 @@ async function indexDonations() {
     const amountMicroTx = value([donationEvent], 'amount_microtx') ?? value([donationEvent], 'amount')
     if (!projectId || !donorAddress || !amountMicroTx) throw new Error(`Donation event ${transaction.hash} is missing required attributes`)
 
-    const { data: project } = await supabase.from('projects').select('id').or(`id.eq.${projectId},chain_project_id.eq.${projectId}`).maybeSingle()
+    const { data: project } = await supabase.from('projects').select('id, chain_project_id').or(`id.eq.${projectId},chain_project_id.eq.${projectId}`).maybeSingle()
     if (!project) {
       console.warn(`Skipping donation ${transaction.hash}: project ${projectId} no longer exists`)
       await saveCursor(transaction.height)
@@ -85,10 +113,10 @@ async function indexDonations() {
       network: process.env.COREUM_NETWORK === 'mainnet' ? 'coreum-mainnet' : 'coreum-testnet',
     }, { onConflict: 'tx_hash' })
     if (error) throw error
-    const onChainResponse = await chain.queryContractSmart(configuredContractAddress, { project: { project_id: projectId } }) as { project?: { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string } } | { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string }
+    const onChainResponse = await chain.queryContractSmart(configuredContractAddress, { project: { project_id: project.chain_project_id ?? projectId } }) as { project?: { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string } } | { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string }
     const onChainProject = ('project' in onChainResponse && onChainResponse.project ? onChainResponse.project : onChainResponse) as { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string }
     if (BigInt(onChainProject.raised ?? onChainProject.raised_micro_tx ?? '0') >= BigInt(onChainProject.goal ?? onChainProject.goal_micro_tx ?? '0')) {
-      const { error: projectStatusError } = await supabase.from('projects').update({ status: 'funded' }).eq('id', projectId).eq('status', 'active')
+      const { error: projectStatusError } = await supabase.from('projects').update({ status: 'funded' }).eq('id', project.id).eq('status', 'active')
       if (projectStatusError) throw projectStatusError
     }
     await saveCursor(transaction.height)

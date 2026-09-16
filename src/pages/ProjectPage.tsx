@@ -1,17 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DonationRecord, Project, ProjectComment } from "../lib/supabase";
 import { identityRepository, projectRepository } from "../lib/supabase";
-import { ArrowUpRight, Check, Copy, ExternalLink, Heart, MessagesSquare, Send, Share2, ShieldCheck } from "lucide-react";
-import { optimizeProjectImageUrl, Progress, ProjectVisual } from "../components/ProjectPrimitives";
+import {
+  ArrowUpRight,
+  Check,
+  Copy,
+  ExternalLink,
+  Heart,
+  MessagesSquare,
+  Send,
+  Share2,
+  ShieldCheck,
+} from "lucide-react";
+import {
+  optimizeProjectImageUrl,
+  Progress,
+  ProjectVisual,
+} from "../components/ProjectPrimitives";
 import { claimProjectFunds, getProjectOnChain } from "../lib/wallet";
 import { getBrowserWalletAddress } from "../lib/walletVault";
+import { showNotice } from "../components/Toast";
 
 const chainExplorerBase =
   import.meta.env.VITE_COREUM_NETWORK === "mainnet"
     ? "https://explorer.coreum.com/tx"
     : "https://explorer.testnet-1.tx.org/tx";
 
-const contractAddress = import.meta.env.VITE_COREUM_DONATION_CONTRACT ?? "";
+const contractAddress =
+  import.meta.env.VITE_COREUM_DONATION_CONTRACT?.trim() ?? "";
 
 type DiscussionComment = {
   id: string;
@@ -20,7 +36,13 @@ type DiscussionComment = {
   createdAt: string;
 };
 
-export function ProjectPage({ project, onDonate }: { project: Project; onDonate: () => void }) {
+export function ProjectPage({
+  project,
+  onDonate,
+}: {
+  project: Project;
+  onDonate: () => void;
+}) {
   const [details, setDetails] = useState<Project>(project);
   const [contractState, setContractState] = useState<{
     beneficiary: string;
@@ -28,6 +50,8 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
     status: string;
     donor_count: number;
     raised_micro_tx: string;
+    unstaking_started_at: number | null;
+    unbonding_seconds: number;
   } | null>(null);
   const [donations, setDonations] = useState<DonationRecord[]>([]);
   const [comments, setComments] = useState<ProjectComment[]>([]);
@@ -35,8 +59,6 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
   const [message, setMessage] = useState("");
   const [profileHandle, setProfileHandle] = useState<string | null>(null);
   const [ownerWallet, setOwnerWallet] = useState<string | null>(null);
-  const [claimPassword, setClaimPassword] = useState("");
-  const [claimMessage, setClaimMessage] = useState("");
   const [txUsdRate, setTxUsdRate] = useState<number | null>(null);
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
   const [shareMessage, setShareMessage] = useState("");
@@ -60,7 +82,9 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
       }
 
       try {
-        const onChain = await getProjectOnChain(project.chainProjectId ?? project.id);
+        const onChain = await getProjectOnChain(
+          project.chainProjectId ?? project.id,
+        );
         if (active) setContractState(onChain);
       } catch {
         if (active) setContractState(null);
@@ -80,7 +104,8 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
           setAuthor(profile.handle);
         }
         const localWallet = await getBrowserWalletAddress();
-        if (active) setOwnerWallet(localWallet ?? profile?.wallet_address ?? null);
+        if (active)
+          setOwnerWallet(localWallet ?? profile?.wallet_address ?? null);
       } catch {
         // Ignore profile load failures for guest visitors.
       }
@@ -103,28 +128,37 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
     };
   }, [project.id]);
 
-  const explorerTx = (hash: string) => `${chainExplorerBase}/transactions/${hash}`;
-  const explorerAddress = (value: string) => `${chainExplorerBase}/accounts/${value}`;
-  const shorten = (value: string) => `${value.slice(0, 12)}...${value.slice(-8)}`;
+  const explorerTx = (hash: string) =>
+    `${chainExplorerBase}/transactions/${hash}`;
+  const explorerAddress = (value: string) =>
+    `${chainExplorerBase}/accounts/${value}`;
+  const shorten = (value: string) =>
+    `${value.slice(0, 12)}...${value.slice(-8)}`;
   const copyValue = async (value: string) => {
     await navigator.clipboard.writeText(value);
     setCopiedValue(value);
-    window.setTimeout(() => setCopiedValue((current) => current === value ? null : current), 1600);
+    window.setTimeout(
+      () => setCopiedValue((current) => (current === value ? null : current)),
+      1600,
+    );
   };
   const shareProject = async () => {
-    const shareData = { title: details.title, text: details.description, url: window.location.href };
+    const shareData = {
+      title: details.title,
+      text: details.description,
+      url: window.location.href,
+    };
     try {
       if (navigator.share) await navigator.share(shareData);
       else {
         await navigator.clipboard.writeText(window.location.href);
-        setShareMessage("Link copied");
+        showNotice("Project link copied.", "success");
         window.setTimeout(() => setShareMessage(""), 1600);
       }
       await projectRepository.recordProjectShare(project.id);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      setShareMessage("Unable to share");
-      window.setTimeout(() => setShareMessage(""), 1600);
+      showNotice("We couldn't share this project.", "error");
     }
   };
 
@@ -132,14 +166,21 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
     setLikeMessage("");
     try {
       const engagement = await projectRepository.toggleProjectLike(project.id);
-      setDetails((current) => ({ ...current, likes: Number(engagement.like_count), likedByUser: Boolean(engagement.liked_by_user) }));
+      setDetails((current) => ({
+        ...current,
+        likes: Number(engagement.like_count),
+        likedByUser: Boolean(engagement.liked_by_user),
+      }));
     } catch (error) {
-      setLikeMessage(error instanceof Error ? error.message : "Unable to update your like");
+      showNotice(error instanceof Error ? error.message : "We couldn't update your like.", "error");
     }
   };
 
   const donationTotal = useMemo(() => {
-    const fromChain = contractState && txUsdRate !== null ? (Number(contractState.raised_micro_tx ?? "0") / 1_000_000) * txUsdRate : details.raised;
+    const fromChain =
+      contractState && txUsdRate !== null
+        ? (Number(contractState.raised_micro_tx ?? "0") / 1_000_000) * txUsdRate
+        : details.raised;
     return Number.isFinite(fromChain) ? fromChain : details.raised;
   }, [contractState, details.raised, txUsdRate]);
 
@@ -147,7 +188,11 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
     const trimmed = message.trim();
     if (!trimmed) return;
     try {
-      const created = await projectRepository.postComment(project.id, trimmed, profileHandle ?? author);
+      const created = await projectRepository.postComment(
+        project.id,
+        trimmed,
+        profileHandle ?? author,
+      );
       setComments((current) => [created, ...current]);
       setMessage("");
     } catch (error) {
@@ -156,50 +201,413 @@ export function ProjectPage({ project, onDonate }: { project: Project; onDonate:
     }
   };
 
-  const canClaim = Boolean(contractState?.beneficiary && ownerWallet && contractState.beneficiary === ownerWallet && ["funded", "unstaking"].includes(contractState.status.toLowerCase()));
+  const claimableState = Boolean(
+    contractState &&
+      ["funded", "unstaking"].includes(contractState.status.toLowerCase()),
+  );
+  const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowSeconds(Math.floor(Date.now() / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const unbondingRemaining = contractState?.status.toLowerCase() === "unstaking" && contractState.unstaking_started_at !== null
+    ? Math.max(0, contractState.unstaking_started_at + contractState.unbonding_seconds - nowSeconds)
+    : 0;
+  const formatCountdown = (seconds: number) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    return `${days}d ${hours}h ${minutes}m ${remainingSeconds}s`;
+  };
+  const canClaim = Boolean(
+    claimableState &&
+      contractState?.beneficiary &&
+      ownerWallet &&
+      contractState.beneficiary === ownerWallet,
+  );
   const claim = async () => {
-    setClaimMessage("");
     try {
-      const result = await claimProjectFunds(project.id, claimPassword);
-      setClaimMessage(`Claim submitted: ${result.txHash}. If unstaking started, return after the validator's unbonding period to release the funds.`);
-      setClaimPassword("");
+      const result = await claimProjectFunds(
+        project.chainProjectId ?? project.id,
+      );
+      showNotice("Claim submitted. Funds are now entering the release process.", "success");
     } catch (error) {
-      setClaimMessage(error instanceof Error ? error.message : "Unable to claim project funds");
+      showNotice(error instanceof Error ? error.message : "We couldn't submit the claim.", "error");
     }
   };
 
-  const imageUrls = (details.image_urls ?? []).map((imageUrl) => optimizeProjectImageUrl(imageUrl, 420));
-  const fundingStatus = details.status === "funded" ? "Funded" : details.status === "closed" ? "Closed" : "Active";
-  return <main className="project-route section-wrap"><div className="project-route-actions"><a className="text-link route-back" href="#/projects">← Back to projects</a><span className="project-share-control"><button className="icon-button" onClick={() => void toggleLike()} aria-label={details.likedByUser ? "Unlike project" : "Like project"} title={details.likedByUser ? "Unlike project" : "Like project"}>{<Heart size={16} fill={details.likedByUser ? "currentColor" : "none"} />}</button><span>{details.likes ?? 0}</span><button className="icon-button" onClick={() => void shareProject()} aria-label="Share project" title="Share project"><Share2 size={16} /></button>{shareMessage && <span>{shareMessage}</span>}{likeMessage && <span>{likeMessage}</span>}</span></div><section className="feature-layout"><div className="project-detail-gallery"><ProjectVisual project={details} featured />{imageUrls.length > 1 && <div className="project-gallery-thumbnails">{imageUrls.map((imageUrl, index) => <img key={`${imageUrl}-${index}`} src={imageUrl} alt={`${details.title} project photo ${index + 1}`} />)}</div>}</div><article className="feature-panel"><div className="feature-panel-top"><span className="category-label">{details.category}</span><span className="feature-location">{details.location}</span></div><p className="feature-church">{details.church}</p><h1>{details.title}</h1><p className="feature-description">{details.description}</p><div className="funding-detail"><div className="funding-numbers"><span><strong>${donationTotal.toLocaleString()}</strong> raised</span><span>of ${details.goal.toLocaleString()}</span></div><Progress project={details} large /><div className="funding-footer"><span><b>{Math.round((donationTotal / details.goal) * 100)}%</b> funded</span><span>{contractState?.donor_count ?? details.donors} neighbors have given</span></div></div><button className={details.status === "funded" ? "button feature-donate funded-donate" : "button button-coral feature-donate"} disabled={details.status === "funded"} onClick={onDonate}>{details.status === "funded" ? "Funded" : <>Support this project <ArrowUpRight size={16} /></>}</button></article></section>
-    <section className="project-detail-grid" style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "24px", marginTop: "40px" }}>
-      <div className="project-detail-card" style={{ border: "1px solid var(--line)", background: "var(--white)", padding: "24px" }}>
-        <div className="project-section-heading"><span className="eyebrow">Project discussion</span><MessagesSquare className="project-section-icon" aria-hidden="true" /></div>
-        <div style={{ display: "grid", gap: "10px", marginBottom: "18px" }}>
-          <input value={profileHandle ?? author} onChange={(event) => { setAuthor(event.target.value); setProfileHandle(null); }} placeholder="Your handle" readOnly={Boolean(profileHandle)} style={{ border: "1px solid var(--line)", background: "transparent", padding: "10px 12px", color: "var(--ink)", cursor: profileHandle ? "default" : "text" }} />
-          <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Share an update, prayer, or encouragement for this project..." style={{ minHeight: "100px", border: "1px solid var(--line)", background: "transparent", padding: "10px 12px", color: "var(--ink)", resize: "vertical" }} />
-          <button className="button button-coral" onClick={() => void submitComment()} style={{ justifySelf: "end" }}><Send size={15} /> Post comment</button>
-        </div>
-        {canClaim && <div className="claim-box"><p className="eyebrow">Owner claim</p><p className="profile-empty">The project is fully funded. The first claim starts validator unstaking; submit this again after the seven-day unbonding period to release the funds.</p><input type="password" value={claimPassword} onChange={(event) => setClaimPassword(event.target.value)} placeholder="Local wallet password" /><button className="button button-coral" onClick={() => void claim()} disabled={!claimPassword}>Claim / release funds</button>{claimMessage && <p className="modal-footnote">{claimMessage}</p>}</div>}
-        <div style={{ display: "grid", gap: "12px" }}>
-          {comments.length ? comments.map((comment) => <article key={comment.id} style={{ borderTop: "1px solid var(--line)", paddingTop: "12px" }}><div style={{ display: "flex", justifyContent: "space-between", gap: "10px", marginBottom: "6px", fontSize: "10px", color: "var(--muted)" }}><strong style={{ color: "var(--ink)" }}>{comment.author_handle}</strong><span>{new Date(comment.created_at).toLocaleDateString()}</span></div><p style={{ margin: 0, lineHeight: 1.6, color: "var(--ink)" }}>{comment.message}</p></article>) : <p className="profile-empty">No comments yet. Start the conversation.</p>}
-        </div>
+  const imageUrls = (details.image_urls ?? []).map((imageUrl) =>
+    optimizeProjectImageUrl(imageUrl, 420),
+  );
+  const projectFunded = claimableState || details.status === "funded";
+  const fundingStatus = projectFunded
+    ? "Funded"
+    : details.status === "closed"
+      ? "Closed"
+      : "Active";
+  return (
+    <main className="project-route section-wrap">
+      <div className="project-route-actions">
+        <a className="text-link route-back" href="#/projects">
+          ← Back to projects
+        </a>
+        <span className="project-share-control">
+          <button
+            className="icon-button"
+            onClick={() => void toggleLike()}
+            aria-label={details.likedByUser ? "Unlike project" : "Like project"}
+            title={details.likedByUser ? "Unlike project" : "Like project"}
+          >
+            {
+              <Heart
+                size={16}
+                fill={details.likedByUser ? "currentColor" : "none"}
+              />
+            }
+          </button>
+          <span>{details.likes ?? 0}</span>
+          <button
+            className="icon-button"
+            onClick={() => void shareProject()}
+            aria-label="Share project"
+            title="Share project"
+          >
+            <Share2 size={16} />
+          </button>
+          {shareMessage && <span>{shareMessage}</span>}
+          {likeMessage && <span>{likeMessage}</span>}
+        </span>
       </div>
-      <div className="project-detail-card" style={{ border: "1px solid var(--line)", background: "var(--white)", padding: "24px" }}>
-        <div className="project-section-heading"><span className="eyebrow">On-chain record</span><ShieldCheck className="project-section-icon" aria-hidden="true" /></div>
+      <section className="feature-layout">
+        <div className="project-detail-gallery">
+          <ProjectVisual project={details} featured />
+          {imageUrls.length > 1 && (
+            <div className="project-gallery-thumbnails">
+              {imageUrls.map((imageUrl, index) => (
+                <img
+                  key={`${imageUrl}-${index}`}
+                  src={imageUrl}
+                  alt={`${details.title} project photo ${index + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        <article className="feature-panel">
+          <div className="feature-panel-top">
+            <span className="category-label">{details.category}</span>
+            <span className="feature-location">{details.location}</span>
+          </div>
+          <p className="feature-church">{details.church}</p>
+          <h1>{details.title}</h1>
+          <p className="feature-description">{details.description}</p>
+          <div className="funding-detail">
+            <div className="funding-numbers">
+              <span>
+                <strong>${donationTotal.toLocaleString()}</strong> raised
+              </span>
+              <span>of ${details.goal.toLocaleString()}</span>
+            </div>
+            <Progress project={details} large />
+            <div className="funding-footer">
+              <span>
+                <b>{Math.round((donationTotal / details.goal) * 100)}%</b>{" "}
+                funded
+              </span>
+              <span>
+                {contractState?.donor_count ?? details.donors} neighbors have
+                given
+              </span>
+            </div>
+          </div>
+          <button
+            className={
+              canClaim
+                ? "button button-coral feature-donate"
+                : projectFunded
+                  ? "button feature-donate funded-donate"
+                  : "button button-coral feature-donate"
+            }
+            disabled={projectFunded && !canClaim}
+            onClick={canClaim ? () => void claim() : onDonate}
+          >
+            {canClaim ? "Claim funds" : projectFunded ? "Funded" : (
+              <>
+                Support this project <ArrowUpRight size={16} />
+              </>
+            )}
+          </button>
+          {canClaim && contractState?.status.toLowerCase() === "unstaking" && (
+            <p className="claim-countdown">
+              {unbondingRemaining > 0 ? `Claim available in ${formatCountdown(unbondingRemaining)}.` : "Claim is ready."}
+            </p>
+          )}
+        </article>
+      </section>
+      <section
+        className="project-detail-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.2fr 0.8fr",
+          gap: "24px",
+          marginTop: "40px",
+        }}
+      >
+        <div
+          className="project-detail-card"
+          style={{
+            border: "1px solid var(--line)",
+            background: "var(--white)",
+            padding: "24px",
+          }}
+        >
+          <div className="project-section-heading">
+            <span className="eyebrow">Project discussion</span>
+            <MessagesSquare
+              className="project-section-icon"
+              aria-hidden="true"
+            />
+          </div>
+          <div style={{ display: "grid", gap: "10px", marginBottom: "18px" }}>
+            <input
+              value={profileHandle ?? author}
+              onChange={(event) => {
+                setAuthor(event.target.value);
+                setProfileHandle(null);
+              }}
+              placeholder="Your handle"
+              readOnly={Boolean(profileHandle)}
+              style={{
+                border: "1px solid var(--line)",
+                background: "transparent",
+                padding: "10px 12px",
+                color: "var(--ink)",
+                cursor: profileHandle ? "default" : "text",
+              }}
+            />
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder="Share an update, prayer, or encouragement for this project..."
+              style={{
+                minHeight: "100px",
+                border: "1px solid var(--line)",
+                background: "transparent",
+                padding: "10px 12px",
+                color: "var(--ink)",
+                resize: "vertical",
+              }}
+            />
+            <button
+              className="button button-coral"
+              onClick={() => void submitComment()}
+              style={{ justifySelf: "end" }}
+            >
+              <Send size={15} /> Post comment
+            </button>
+          </div>
+          <div style={{ display: "grid", gap: "12px" }}>
+            {comments.length ? (
+              comments.map((comment) => (
+                <article
+                  key={comment.id}
+                  style={{
+                    borderTop: "1px solid var(--line)",
+                    paddingTop: "12px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: "10px",
+                      marginBottom: "6px",
+                      fontSize: "10px",
+                      color: "var(--muted)",
+                    }}
+                  >
+                    <strong style={{ color: "var(--ink)" }}>
+                      {comment.author_handle}
+                    </strong>
+                    <span>
+                      {new Date(comment.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p
+                    style={{ margin: 0, lineHeight: 1.6, color: "var(--ink)" }}
+                  >
+                    {comment.message}
+                  </p>
+                </article>
+              ))
+            ) : (
+              <p className="profile-empty">
+                No comments yet. Start the conversation.
+              </p>
+            )}
+          </div>
+        </div>
+        <div
+          className="project-detail-card"
+          style={{
+            border: "1px solid var(--line)",
+            background: "var(--white)",
+            padding: "24px",
+          }}
+        >
+          <div className="project-section-heading">
+            <span className="eyebrow">On-chain record</span>
+            <ShieldCheck className="project-section-icon" aria-hidden="true" />
+          </div>
           <div className="chain-record-grid">
-            {contractAddress && <div className="chain-record-card chain-record-address-card"><div className="chain-record-heading"><span>Donation vault</span></div><strong className="chain-record-value">{shorten(contractAddress)}</strong><div className="chain-record-actions"><button className="icon-button" onClick={() => void copyValue(contractAddress)} title="Copy vault address" aria-label="Copy vault address">{copiedValue === contractAddress ? <Check size={14} /> : <Copy size={14} />}</button><a className="icon-button" href={explorerAddress(contractAddress)} target="_blank" rel="noreferrer" title="Open vault in explorer" aria-label="Open vault in explorer"><ExternalLink size={14} /></a></div></div>}
-            {contractState?.beneficiary && <div className="chain-record-card chain-record-address-card"><div className="chain-record-heading"><span>Beneficiary</span></div><strong className="chain-record-value">{shorten(contractState.beneficiary)}</strong><div className="chain-record-actions"><button className="icon-button" onClick={() => void copyValue(contractState.beneficiary)} title="Copy beneficiary address" aria-label="Copy beneficiary address">{copiedValue === contractState.beneficiary ? <Check size={14} /> : <Copy size={14} />}</button><a className="icon-button" href={explorerAddress(contractState.beneficiary)} target="_blank" rel="noreferrer" title="Open beneficiary in explorer" aria-label="Open beneficiary in explorer"><ExternalLink size={14} /></a></div></div>}
-            {contractState?.metadata_token_id && <div className="chain-record-card"><div className="chain-record-heading"><span>Metadata token</span><span className="chain-record-status">Token</span></div><strong className="chain-record-value">{shorten(contractState.metadata_token_id)}</strong></div>}
-            <div className="chain-record-card"><div className="chain-record-heading"><span>Funding status</span><span className="chain-record-status">Project</span></div><strong className="chain-record-value chain-record-status-value">{fundingStatus}</strong></div>
-            {contractState?.status && <div className="chain-record-card"><div className="chain-record-heading"><span>Contract status</span><span className="chain-record-status">Live</span></div><strong className="chain-record-value chain-record-status-value">{contractState.status}</strong></div>}
+            {contractAddress && (
+              <div className="chain-record-card chain-record-address-card">
+                <div className="chain-record-heading">
+                  <span>Donation vault</span>
+                </div>
+                <strong className="chain-record-value">
+                  {shorten(contractAddress)}
+                </strong>
+                <div className="chain-record-actions">
+                  <button
+                    className="icon-button"
+                    onClick={() => void copyValue(contractAddress)}
+                    title="Copy vault address"
+                    aria-label="Copy vault address"
+                  >
+                    {copiedValue === contractAddress ? (
+                      <Check size={14} />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                  </button>
+                  <a
+                    className="icon-button"
+                    href={explorerAddress(contractAddress)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open vault in explorer"
+                    aria-label="Open vault in explorer"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                </div>
+              </div>
+            )}
+            {contractState?.beneficiary && (
+              <div className="chain-record-card chain-record-address-card">
+                <div className="chain-record-heading">
+                  <span>Beneficiary</span>
+                </div>
+                <strong className="chain-record-value">
+                  {shorten(contractState.beneficiary)}
+                </strong>
+                <div className="chain-record-actions">
+                  <button
+                    className="icon-button"
+                    onClick={() => void copyValue(contractState.beneficiary)}
+                    title="Copy beneficiary address"
+                    aria-label="Copy beneficiary address"
+                  >
+                    {copiedValue === contractState.beneficiary ? (
+                      <Check size={14} />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                  </button>
+                  <a
+                    className="icon-button"
+                    href={explorerAddress(contractState.beneficiary)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open beneficiary in explorer"
+                    aria-label="Open beneficiary in explorer"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                </div>
+              </div>
+            )}
+            {contractState?.metadata_token_id && (
+              <div className="chain-record-card">
+                <div className="chain-record-heading">
+                  <span>Metadata token</span>
+                  <span className="chain-record-status">Token</span>
+                </div>
+                <strong className="chain-record-value">
+                  {shorten(contractState.metadata_token_id)}
+                </strong>
+              </div>
+            )}
+            <div className="chain-record-card">
+              <div className="chain-record-heading">
+                <span>Funding status</span>
+                <span className="chain-record-status">Project</span>
+              </div>
+              <strong className="chain-record-value chain-record-status-value">
+                {fundingStatus}
+              </strong>
+            </div>
+            {contractState?.status && (
+              <div className="chain-record-card">
+                <div className="chain-record-heading">
+                  <span>Contract status</span>
+                  <span className="chain-record-status">Live</span>
+                </div>
+                <strong className="chain-record-value chain-record-status-value">
+                  {contractState.status}
+                </strong>
+              </div>
+            )}
           </div>
-        <div className="donation-history-section">
-          <p className="eyebrow">Donation history</p>
-          <div className="donation-history-list">
-            {donations.length ? donations.map((donation) => <article className="donation-history-card" key={donation.id}><div className="donation-history-icon"><ArrowUpRight size={15} /></div><div className="donation-history-main"><strong>{Number(donation.amount_tx ?? 0).toFixed(2)} TX</strong><span>{new Date(donation.created_at).toLocaleDateString()}</span></div><div className="donation-history-value">{donation.amount_usd ? `$${Number(donation.amount_usd).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "TX"}</div>{donation.tx_hash ? <a className="icon-button" href={explorerTx(donation.tx_hash)} target="_blank" rel="noreferrer" title="Open transaction in explorer" aria-label="Open transaction in explorer"><ExternalLink size={14} /></a> : <span className="donation-pending">Pending chain confirmation</span>}</article>) : <p className="profile-empty">No on-chain donations yet.</p>}
+          <div className="donation-history-section">
+            <p className="eyebrow">Donation history</p>
+            <div className="donation-history-list">
+              {donations.length ? (
+                donations.map((donation) => (
+                  <article className="donation-history-card" key={donation.id}>
+                    <div className="donation-history-icon">
+                      <ArrowUpRight size={15} />
+                    </div>
+                    <div className="donation-history-main">
+                      <strong>
+                        {Number(donation.amount_tx ?? 0).toFixed(2)} TX
+                      </strong>
+                      <span>
+                        {new Date(donation.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="donation-history-value">
+                      {donation.amount_usd
+                        ? `$${Number(donation.amount_usd).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                        : "TX"}
+                    </div>
+                    {donation.tx_hash ? (
+                      <a
+                        className="icon-button"
+                        href={explorerTx(donation.tx_hash)}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open transaction in explorer"
+                        aria-label="Open transaction in explorer"
+                      >
+                        <ExternalLink size={14} />
+                      </a>
+                    ) : (
+                      <span className="donation-pending">
+                        Pending chain confirmation
+                      </span>
+                    )}
+                  </article>
+                ))
+              ) : (
+                <p className="profile-empty">No on-chain donations yet.</p>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </section>
-  </main>;
+      </section>
+    </main>
+  );
 }

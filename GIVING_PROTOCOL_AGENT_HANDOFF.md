@@ -33,9 +33,9 @@ The Rust contract is the custody source of truth. The application may index and 
 
 The white-label protocol is already deployed as the single shared donation contract for all partner platforms:
 
-- Contract: `testcore184vcst03q9p540al5jw3pytjprn7mlr456w9xh0th5awgeyvf3wqz8d8mr`
-- Explorer: `https://explorer.testnet-1.tx.org/tx/accounts/testcore184vcst03q9p540al5jw3pytjprn7mlr456w9xh0th5awgeyvf3wqz8d8mr`
-- Code ID: `3950` (migrated in place from `3948`)
+- Contract: `testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p`
+- Explorer: `https://explorer.testnet-1.tx.org/tx/accounts/testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p`
+- Code ID: `3951` (latest live protocol deployment)
 - Instantiate transaction: `9413BF701A5F81EA97A9817B2939BB516DBAED5777A5C7C5F38C7477CBA181B8`
 - Migration transaction: `673968511EE7D65AC8942A5F6B1892E156F2D6CA90FC5FBDF3011822C5AAD52B`
 - Chain ID: `coreum-testnet-1`
@@ -44,7 +44,7 @@ The white-label protocol is already deployed as the single shared donation contr
 - Staking validator: `testcorevaloper1eegug92k2gp9c6kqjsadk3tku29sr2rsryjszy`
 - Unbonding period: `604800` seconds
 
-The contract currently has no registered projects. The `giving` project must register approved projects on this shared contract; it must not deploy or instantiate a contract of its own.
+The older code ID `3950` deployment is superseded. Existing projects and funds on that older address require explicit reconciliation; they are not moved by changing configuration.
 
 The Windows Credential Manager entry is deployment-only and is not used by the application:
 

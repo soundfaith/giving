@@ -78,7 +78,7 @@ Deno.serve(async (request) => {
 
     const { data: projects, error: projectError } = await supabase
       .from("projects")
-      .select("id, goal_tx, owner_wallet_address")
+      .select("id, chain_project_id, title, goal_tx, owner_wallet_address")
       .eq("status", "approved_pending_chain")
       .order("created_at", { ascending: true });
     if (projectError) throw projectError;
@@ -99,20 +99,25 @@ Deno.serve(async (request) => {
       try {
         let transactionHash: string | undefined;
         try {
-          const existing = await chain.queryContractSmart(contractAddress, { project: { project_id: project.id } }) as { status?: string };
-          if (!existing?.status) throw new Error("On-chain project record is incomplete");
+          const chainProjectId = project.chain_project_id ?? `soundfaith:${project.id}`;
+          const existing = await chain.queryContractSmart(contractAddress, { project: { project_id: chainProjectId } }) as { project?: { status?: string } };
+          if (!existing?.project?.status) throw new Error("On-chain project record is incomplete");
         } catch {
+          const chainProjectId = project.chain_project_id ?? `soundfaith:${project.id}`;
           const result = await chain.execute(
             account.address,
             contractAddress,
             {
               register_project: {
                 project: {
-                  id: project.id,
-                  goal_micro_tx: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
-                  status: "active",
-                  metadata_token_id: "",
+                  id: chainProjectId,
                   beneficiary: project.owner_wallet_address,
+                  goal: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
+                  metadata_uri: null,
+                  platform_id: "soundfaith",
+                  fee_bps: 0,
+                  expires_at: null,
+                  status: "active",
                 },
               },
             },
@@ -121,8 +126,11 @@ Deno.serve(async (request) => {
           );
           transactionHash = result.transactionHash;
         }
+        const chainProjectId = project.chain_project_id ?? `soundfaith:${project.id}`;
         const { error: activateError } = await supabase.rpc("relayer_activate_project", {
           target_project_id: project.id,
+          next_chain_project_id: chainProjectId,
+          next_transaction_hash: transactionHash ?? "",
         });
         if (activateError) throw activateError;
         await heartbeat({ success: true, projectId: project.id, transactionHash });
@@ -134,7 +142,8 @@ Deno.serve(async (request) => {
       }
     }
 
-    return json({ relayer: account.address, chainId, processed: results });
+    const failed = results.filter((result) => result.status !== "active");
+    return json({ relayer: account.address, chainId, processed: results }, failed.length ? 500 : 200);
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }

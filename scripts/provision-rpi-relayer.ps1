@@ -32,17 +32,30 @@ function Invoke-Remote([int]$SessionId, [string]$Command) {
   if ($result.Output) { $result.Output }
 }
 
+function Invoke-SupabaseCli([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments) {
+  if (Get-Command supabase -ErrorAction SilentlyContinue) {
+    & supabase @Arguments
+  } else {
+    & npx supabase @Arguments
+  }
+  if ($LASTEXITCODE -ne 0) { throw "Supabase CLI failed with exit code $LASTEXITCODE." }
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 $envLines = Get-Content (Join-Path $root '.env.local')
 $supabaseUrl = (($envLines | Where-Object { $_ -match '^VITE_SUPABASE_URL=' }) -split '=', 2)[1]
 $contract = (($envLines | Where-Object { $_ -match '^VITE_COREUM_DONATION_CONTRACT=' }) -split '=', 2)[1]
-$serviceKeys = supabase projects api-keys --project-ref gqnrvnsoyhirpvcvxapl --reveal --output json | ConvertFrom-Json
+$serviceKeys = Invoke-SupabaseCli projects api-keys --project-ref gqnrvnsoyhirpvcvxapl --reveal --output json | ConvertFrom-Json
 $serviceEntry = $serviceKeys | Where-Object { $_.name -eq 'service_role' } | Select-Object -First 1
 $serviceKey = if ($serviceEntry.api_key) { $serviceEntry.api_key } else { $serviceEntry.key }
 $mnemonic = Get-StoredSecret 'soundfaith-wallet-devnet' 'mnemonic'
 $piPassword = Get-StoredSecret 'raspberry-pi' 'soundfaith'
+$txRateCronSecret = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
 
 if (-not $supabaseUrl -or -not $contract -or -not $serviceKey -or -not $mnemonic) { throw 'Required deployment configuration is missing.' }
+
+Invoke-SupabaseCli secrets set --project-ref gqnrvnsoyhirpvcvxapl "TX_RATE_CRON_SECRET=$txRateCronSecret" | Out-Null
+Invoke-SupabaseCli functions deploy update-tx-rate --project-ref gqnrvnsoyhirpvcvxapl --no-verify-jwt | Out-Null
 
 $securePassword = ConvertTo-SecureString $piPassword -AsPlainText -Force
 $credential = [PSCredential]::new('soundfaith', $securePassword)
@@ -72,6 +85,7 @@ try {
   New-Item -ItemType Directory -Path $stage | Out-Null
   try {
     Copy-Item (Join-Path $root 'scripts\coreum-relayer.ts') $stage
+    Copy-Item (Join-Path $root 'scripts\invoke-tx-rate.ts') $stage
     Copy-Item (Join-Path $root 'scripts\coreum-indexer.ts') $stage
     Copy-Item (Join-Path $root 'package.json') $stage
     Copy-Item (Join-Path $root 'package-lock.json') $stage
@@ -82,7 +96,7 @@ try {
   } finally {
     Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
   }
-  Invoke-Sudo 'install -d -o soundfaith -g soundfaith /opt/soundfaith/scripts; cp /tmp/coreum-relayer.ts /tmp/coreum-indexer.ts /opt/soundfaith/scripts/; cp /tmp/package.json /tmp/package-lock.json /tmp/tsconfig.scripts.json /opt/soundfaith/; chown -R soundfaith:soundfaith /opt/soundfaith'
+  Invoke-Sudo 'install -d -o soundfaith -g soundfaith /opt/soundfaith/scripts; cp /tmp/coreum-relayer.ts /tmp/coreum-indexer.ts /tmp/invoke-tx-rate.ts /opt/soundfaith/scripts/; cp /tmp/package.json /tmp/package-lock.json /tmp/tsconfig.scripts.json /opt/soundfaith/; chown -R soundfaith:soundfaith /opt/soundfaith'
   Invoke-Remote $sessionId 'cd /opt/soundfaith && npm ci && npm run typecheck:scripts'
 
   $envContent = @"
@@ -98,6 +112,8 @@ COREUM_NATIVE_DENOM=utestcore
 COREUM_NETWORK=testnet
 COREUM_RELAYER_POLL_MS=10000
 COREUM_INDEXER_POLL_MS=10000
+TX_RATE_URL=$supabaseUrl/functions/v1/update-tx-rate
+TX_RATE_CRON_SECRET=$txRateCronSecret
 "@
   $envB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($envContent))
   Invoke-Sudo "printf '%s' '$envB64' | base64 -d > /etc/soundfaith-relayer.env; chown root:root /etc/soundfaith-relayer.env; chmod 600 /etc/soundfaith-relayer.env"
@@ -131,6 +147,41 @@ WantedBy=multi-user.target
   Invoke-Sudo "printf '%s' '$unitB64' | base64 -d > /etc/systemd/system/soundfaith-relayer.service; systemctl daemon-reload; systemctl enable soundfaith-relayer"
   $indexerUnit = $unit.Replace('SoundFaith Coreum project relayer', 'SoundFaith Coreum donation indexer').Replace('soundfaith-relayer', 'soundfaith-indexer').Replace('/etc/soundfaith-indexer.env', '/etc/soundfaith-relayer.env').Replace('coreum:relayer', 'coreum:indexer')
   $indexerUnitB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($indexerUnit))
+  $rateUnit = @'
+[Unit]
+Description=SoundFaith TX/USD rate refresh
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=soundfaith
+Group=soundfaith
+WorkingDirectory=/opt/soundfaith
+EnvironmentFile=/etc/soundfaith-relayer.env
+ExecStart=/usr/bin/npm run tx-rate:update
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/soundfaith
+'@
+  $rateUnitB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($rateUnit))
+  $rateTimer = @'
+[Unit]
+Description=Refresh SoundFaith TX/USD rate every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+'@
+  $rateTimerB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($rateTimer))
+  Invoke-Sudo "printf '%s' '$rateUnitB64' | base64 -d > /etc/systemd/system/soundfaith-tx-rate.service; printf '%s' '$rateTimerB64' | base64 -d > /etc/systemd/system/soundfaith-tx-rate.timer; systemctl daemon-reload; systemctl enable --now soundfaith-tx-rate.timer"
+  Invoke-Sudo "systemctl start soundfaith-tx-rate.service; systemctl is-enabled soundfaith-tx-rate.timer; systemctl is-active soundfaith-tx-rate.timer; systemctl list-timers --all soundfaith-tx-rate.timer --no-pager; journalctl -u soundfaith-tx-rate.service -n 60 --no-pager"
   Invoke-Sudo "printf '%s' '$indexerUnitB64' | base64 -d > /etc/systemd/system/soundfaith-indexer.service; systemctl daemon-reload; systemctl enable soundfaith-indexer"
   Invoke-Sudo 'systemctl stop soundfaith-relayer || true'
   Invoke-Sudo 'systemctl start soundfaith-relayer; systemctl is-enabled soundfaith-relayer; systemctl is-active soundfaith-relayer'
@@ -139,5 +190,5 @@ WantedBy=multi-user.target
   Invoke-Sudo 'journalctl -u soundfaith-indexer -n 30 --no-pager'
 } finally {
   Remove-SSHSession -SessionId $sessionId | Out-Null
-  Remove-Variable piPassword, mnemonic, serviceKey, passwordB64, securePassword, credential, keyCredential -ErrorAction SilentlyContinue
+  Remove-Variable piPassword, mnemonic, serviceKey, passwordB64, securePassword, credential, keyCredential, txRateCronSecret -ErrorAction SilentlyContinue
 }

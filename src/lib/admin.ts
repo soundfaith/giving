@@ -29,8 +29,10 @@ export async function setReviewerStatus(profileId: string, status: AdminReviewer
 export async function setReviewThresholds(projectId: string, approvals: number, rejections: number) { const { error } = await client().rpc("admin_set_review_thresholds", { target_project_id: projectId, next_approval_threshold: approvals, next_rejection_threshold: rejections }); if (error) throw error; }
 export async function resolveProject(projectId: string, status: "approve" | "closed") {
 	if (status === "approve") {
-		const { error } = await client().rpc("admin_override_attestation", { target_project_id: projectId, next_status: "active" });
+		const { error } = await client().rpc("admin_resolve_project", { target_project_id: projectId, next_status: "active" });
 		if (error) throw error;
+		const { error: relayerError } = await client().functions.invoke("coreum-relayer", { body: {} });
+		if (relayerError) throw new Error(`Project approval was recorded, but chain registration could not start: ${relayerError.message}`);
 		return;
 	}
 	const { error } = await client().rpc("admin_resolve_project", { target_project_id: projectId, next_status: status });

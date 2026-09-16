@@ -6,6 +6,8 @@ This guide installs the SoundFaith legacy Node.js relayer on a Raspberry Pi 4 as
 
 The Pi watches Supabase for projects in `approved_pending_chain`, registers those projects on the Coreum contract, and then activates them in Supabase. It does not accept web requests and does not need a public IP address or router port forwarding.
 
+The Pi also refreshes the TX/USD rate through the `update-tx-rate` Supabase Edge Function every 15 minutes. The rate worker uses a dedicated cron secret and does not need the Supabase service-role key.
+
 ## 1. Understand The Network Model
 
 The Pi must make outbound connections to:
@@ -309,7 +311,21 @@ sudo systemctl start soundfaith-relayer
 
 Confirm the Admin page's relayer heartbeat changes and that an `approved_pending_chain` project becomes `active` after successful registration.
 
-## 11. Git Updates
+## 11. TX Rate Refresh Service
+
+The provisioning script installs `soundfaith-tx-rate.service` and the enabled `soundfaith-tx-rate.timer`. The timer starts after boot, runs every 15 minutes, and invokes the deployed `update-tx-rate` Edge Function over HTTPS. The Edge Function is configured with JWT verification disabled because it authenticates these requests with the separate `TX_RATE_CRON_SECRET` header.
+
+Check the timer and its most recent run:
+
+```bash
+sudo systemctl status soundfaith-tx-rate.timer --no-pager
+sudo systemctl list-timers --all soundfaith-tx-rate.timer
+sudo journalctl -u soundfaith-tx-rate.service -n 50 --no-pager
+```
+
+The Admin page's `Refresh TX rate` button remains an authenticated manual fallback.
+
+## 12. Git Updates
 
 Yes, the relayer code should be pushed to GitHub if the Pi is going to pull updates. Do not push secrets. The repository contains code; `/etc/soundfaith-relayer.env` contains secrets and stays only on the Pi.
 
@@ -424,7 +440,7 @@ sudo journalctl -u soundfaith-relayer-update.service
 
 Do not auto-update from arbitrary pull requests. Pull only from a protected branch or signed release tag.
 
-## 12. How Admin Retry Interacts With The Pi
+## 13. How Admin Retry Interacts With The Pi
 
 The current Admin retry action invokes the Supabase Edge Function directly. The Pi worker independently polls Supabase every 10 seconds.
 
@@ -443,7 +459,7 @@ If both the Edge Function and Pi worker are running, both may observe the same p
 
 If the Pi becomes the primary worker, change the Admin retry action to mark/retry the queue and let the Pi process it, rather than invoking the Edge Function directly.
 
-## 13. Security Checklist
+## 14. Security Checklist
 
 - [ ] Raspberry Pi OS Lite 64-bit is installed.
 - [ ] SSH uses keys, not passwords.
@@ -460,7 +476,7 @@ If the Pi becomes the primary worker, change the Admin retry action to mark/retr
 - [ ] The Admin relayer heartbeat is updating.
 - [ ] A pending project can become `active` after registration.
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 Check service state:
 
@@ -486,7 +502,7 @@ Common failures:
 - `service-role key invalid`: obtain a new key from Supabase and replace it locally; never commit it.
 - `working tree is not clean`: inspect local changes before allowing the automatic update script to pull.
 
-## 15. Operational Recommendation
+## 16. Operational Recommendation
 
 Start with manual updates for the first deployment. Once the Pi has run reliably for several days, enable the systemd update timer only if:
 

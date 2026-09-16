@@ -112,7 +112,7 @@ Deno.serve(async (request) => {
     const { data: currentProjects, error: currentProjectsError } = await supabase.from("projects").select("id, chain_project_id, status").in("status", ["active", "funded"]);
     if (currentProjectsError) throw currentProjectsError;
     for (const project of currentProjects ?? []) {
-      const onChainResponse = await chain.queryContractSmart(contractAddress, { project: { project_id: project.chain_project_id ?? project.id } }) as { project?: { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string } };
+      const onChainResponse = await chain.queryContractSmart(contractAddress, { project: { project_id: project.chain_project_id ?? `soundfaith:${project.id}` } }) as { project?: { goal?: string; raised?: string; goal_micro_tx?: string; raised_micro_tx?: string } };
       const onChainProject = onChainResponse.project ?? onChainResponse;
       const reachedGoal = BigInt(onChainProject.raised ?? onChainProject.raised_micro_tx ?? "0") >= BigInt(onChainProject.goal ?? onChainProject.goal_micro_tx ?? "0");
       if (reachedGoal && project.status === "active") {

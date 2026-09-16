@@ -13,6 +13,7 @@ import {
 import { Brand } from "./components/Brand";
 import { ThemeToggle } from "./components/Brand";
 import { ModalLayer, type Modal } from "./components/ModalLayer";
+import { Toast, type Notice } from "./components/Toast";
 import { HomePage } from "./pages/HomePage";
 import { AllProjectsPage } from "./pages/AllProjectsPage";
 import { ProjectPage } from "./pages/ProjectPage";
@@ -33,6 +34,7 @@ import {
   activateBrowserWalletForAddress,
   claimBrowserWalletForEmail,
   getActiveBrowserWallet,
+  getBrowserWalletAddress,
 } from "./lib/walletVault";
 
 const rememberedSessionKey = "soundfaith-remembered-session";
@@ -62,6 +64,13 @@ export default function App() {
   const [authUser, setAuthUser] = useState<string | null>(() => window.localStorage.getItem(rememberedSessionKey));
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">(() => window.localStorage.getItem("soundfaith-theme") === "dark" ? "dark" : "light");
+  const [notice, setNotice] = useState<Notice | null>(null);
+
+  useEffect(() => {
+    const handleNotice = (event: Event) => setNotice((event as CustomEvent<Notice>).detail);
+    window.addEventListener("soundfaith-notice", handleNotice);
+    return () => window.removeEventListener("soundfaith-notice", handleNotice);
+  }, []);
 
   const refreshUnreadNotifications = () => {
     if (!authUser) {
@@ -154,17 +163,11 @@ export default function App() {
       } else {
         await identityRepository.syncProfile(localWallet.address).catch(() => {});
       }
-      if (!localWallet && active)
-        setModal({
-          type: "wallet-setup",
-          walletAddress: profile?.wallet_address ?? null,
-        });
     };
     projectRepository
       .list()
       .then((remote) => {
         if (!active || !remote.length) return;
-        setProjectList(remote);
         void Promise.all(remote.map((project) => projectRepository.syncProjectFromChain(project).catch(() => project)))
           .then((synced) => { if (active) setProjectList(synced); });
       })
@@ -191,12 +194,27 @@ export default function App() {
     () => projectList.find((item) => item.id === route.id),
     [projectList, route],
   );
-  const openChurch = () => setModal({ type: "wallet" });
+  const openChurch = () => {
+    window.location.hash = "#/churches";
+  };
+  const ensureWalletForAction = async (action: "churches" | "donate", project?: Project) => {
+    if (!authUser) {
+      setModal({ type: "wallet" });
+      return;
+    }
+    const address = await getBrowserWalletAddress().catch(() => null);
+    if (!address) {
+      setModal({ type: "wallet-setup", walletAddress: null });
+      return;
+    }
+    if (action === "donate" && project) setModal({ type: "donate", project });
+    else window.location.hash = "#/churches";
+  };
   const openProject = (item: Project) => {
     window.location.hash = `#/projects/${item.id}`;
   };
   const openDonate = (item: Project) =>
-    setModal({ type: "donate", project: item });
+    void ensureWalletForAction("donate", item);
 
   const page =
     route.name === "project" && project ? (
@@ -205,10 +223,10 @@ export default function App() {
       <AllProjectsPage
         projects={projectList}
         onProject={openProject}
-        onDonate={openDonate}
+        onDonate={(item) => { void ensureWalletForAction("donate", item); }}
       />
     ) : route.name === "churches" ? (
-      <ChurchPage authenticated={Boolean(authUser)} onSignIn={openChurch} />
+      <ChurchPage authenticated={Boolean(authUser)} onSignIn={() => setModal({ type: "wallet" })} onRequireWallet={() => void ensureWalletForAction("churches")} />
     ) : route.name === "terms" ? (
       <TermsPage />
     ) : route.name === "profile" ? (
@@ -220,10 +238,10 @@ export default function App() {
     ) : route.name === "admin" ? (
       <AdminPage />
     ) : (
-      <HomePage
+          <HomePage
         projects={projectList}
         onProject={openProject}
-        onDonate={openDonate}
+        onDonate={(item) => { void ensureWalletForAction("donate", item); }}
       />
     );
   return (
@@ -238,31 +256,34 @@ export default function App() {
           <a href="#/all-projects" onClick={() => setMobileMenu(false)}>
             {authUser ? "Browse" : "Browse Projects"}
           </a>
-          <a href="#/churches" onClick={() => setMobileMenu(false)}>Create Project</a>
+          <a href="#/churches" onClick={(event) => { event.preventDefault(); setMobileMenu(false); openChurch(); }}>Create Project</a>
           {authUser && <a href="#/inbox" onClick={() => setMobileMenu(false)}>Inbox</a>}
         </nav>
-        {!authUser && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
-        <a
-          className="button button-dark header-wallet"
-          href={authUser ? "#/profile" : "#/"}
-          onClick={(event) => {
-            if (!authUser) {
-              event.preventDefault();
-              setModal({ type: "wallet" });
-            }
-          }}
-        >
-          <Wallet size={15} /> {authUser ? "Profile" : "Sign in"}
-        </a>
-        <button
-          className="icon-button mobile-toggle"
-          aria-label={mobileMenu ? "Close menu" : "Open menu"}
-          onClick={() => setMobileMenu(!mobileMenu)}
-        >
-          {mobileMenu ? <X size={20} /> : <Menu size={20} />}
-        </button>
+        <div className="header-actions">
+          {!authUser && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
+          <a
+            className="button button-dark header-wallet"
+            href={authUser ? "#/profile" : "#/"}
+            onClick={(event) => {
+              if (!authUser) {
+                event.preventDefault();
+                setModal({ type: "wallet" });
+              }
+            }}
+          >
+            <Wallet size={15} /> {authUser ? "Profile" : "Sign in"}
+          </a>
+          <button
+            className="icon-button mobile-toggle"
+            aria-label={mobileMenu ? "Close menu" : "Open menu"}
+            onClick={() => setMobileMenu(!mobileMenu)}
+          >
+            {mobileMenu ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </header>
       {page}
+      <Toast notice={notice} close={() => setNotice(null)} />
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
         <a href="#/" className={route.name === "home" ? "active" : ""}>
           <Home size={17} />
@@ -271,7 +292,7 @@ export default function App() {
         {!authUser ? <a href="#/all-projects" className={route.name === "all-projects" ? "active" : ""}>
           <Search size={17} />
           <span>Browse</span>
-        </a> : <a href="#/churches" className={route.name === "churches" ? "active" : ""}>
+        </a> : <a href="#/churches" className={route.name === "churches" ? "active" : ""} onClick={(event) => { event.preventDefault(); openChurch(); }}>
           <Plus size={17} />
           <span>Create</span>
         </a>}
@@ -280,7 +301,7 @@ export default function App() {
           <span>Donate</span>
         </a>
         {!authUser ? <>
-          <a href="#/churches" className={route.name === "churches" ? "active" : ""}>
+          <a href="#/churches" className={route.name === "churches" ? "active" : ""} onClick={(event) => { event.preventDefault(); openChurch(); }}>
             <Plus size={17} />
             <span>Create</span>
           </a>

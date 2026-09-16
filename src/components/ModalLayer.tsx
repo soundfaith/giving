@@ -14,13 +14,14 @@ import { formatExchangeRate, formatMoney } from "../lib/projects";
 import { projectCategories } from "../lib/projects";
 import { Progress, ProjectVisual } from "./ProjectPrimitives";
 import {
-  createBrowserWallet,
+  createPasskeyBrowserWallet,
   exportBrowserWallet,
+  hasPasskeyWallet,
   getBrowserWalletAddress,
   importBrowserWallet,
   importBrowserWalletMnemonic,
 } from "../lib/walletVault";
-import { donateWithWallet, friendlyWalletError, getCoreumBalance } from "../lib/wallet";
+import { donateWithWallet, friendlyWalletError, getCoreumBalance, getProjectOnChain } from "../lib/wallet";
 
 export type Modal =
   | { type: "wallet" }
@@ -47,23 +48,22 @@ export function ModalLayer({
   const [confirmed, setConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
+  const [emailSignInOpen, setEmailSignInOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [transactionHash, setTransactionHash] = useState("");
-  const [donationPassword, setDonationPassword] = useState("");
   const [localWalletAvailable, setLocalWalletAvailable] = useState(false);
+  const [passkeyWallet, setPasskeyWallet] = useState(false);
   const [profile, setProfile] = useState<{
     email?: string | null;
     wallet_address?: string | null;
   } | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
+  const [remainingAmount, setRemainingAmount] = useState<number | null>(null);
   const [donations, setDonations] = useState<DonationRecord[]>([]);
   const [ownedProjects, setOwnedProjects] = useState<
     Array<{ id: string; title: string; status: string; goal_tx: number }>
   >([]);
   const [walletExists, setWalletExists] = useState(false);
-  const [walletPassword, setWalletPassword] = useState("");
-  const [walletPasswordConfirmation, setWalletPasswordConfirmation] =
-    useState("");
   const [mnemonic, setMnemonic] = useState("");
   const [walletSetupMode, setWalletSetupMode] = useState<
     "choices" | "import" | "mnemonic" | "create"
@@ -94,11 +94,25 @@ export function ModalLayer({
   }, [churchPhotos]);
   useEffect(() => {
     if (modal.type === "donate") {
+      setAmount(50);
+      setCustomAmount("50");
+      setRemainingAmount(null);
       setTxUsdRate(null);
-      Promise.all([getBrowserWalletAddress(), identityRepository.getTxExchangeRate()]).then(([address, rate]) => {
+      Promise.all([getBrowserWalletAddress(), identityRepository.getTxExchangeRate(), hasPasskeyWallet(), getProjectOnChain(modal.project.chainProjectId ?? modal.project.id)]).then(async ([address, rate, passkey, onChainProject]) => {
         setLocalWalletAvailable(Boolean(address));
+        setPasskeyWallet(passkey);
         setTxUsdRate(rate.tx_usd_rate);
-      }).catch(() => setMessage("We could not load the current TX rate. Please try again."));
+        const remainingMicroTx = BigInt(onChainProject.goal_micro_tx) - BigInt(onChainProject.raised_micro_tx);
+        if (remainingMicroTx > 0n) {
+          const nextRemaining = Number(remainingMicroTx) / 1_000_000;
+          setRemainingAmount(nextRemaining);
+          setAmount(nextRemaining);
+          setCustomAmount(nextRemaining.toFixed(6));
+        } else {
+          setRemainingAmount(0);
+        }
+        setBalance(address ? await getCoreumBalance(address) : null);
+      }).catch((error) => setMessage(error instanceof Error ? error.message : "We could not load the current project state. Please try again."));
     }
     if (modal.type !== "account") return;
     Promise.all([
@@ -122,7 +136,7 @@ export function ModalLayer({
   }, [modal.type]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && modal.type !== "wallet-setup") close();
+      if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -154,9 +168,8 @@ export function ModalLayer({
     setLoading(true);
     try {
       const result = await donateWithWallet(
-        modal.type === "donate" ? modal.project.id : "",
+        modal.type === "donate" ? (modal.project.chainProjectId ?? modal.project.id) : "",
         amount,
-        localWalletAvailable ? donationPassword : undefined,
       );
       await identityRepository.syncProfile(result.address);
       await projectRepository.recordConfirmedDonation({
@@ -179,6 +192,7 @@ export function ModalLayer({
       setLoading(false);
     }
   };
+  const requestDonationUnlock = () => void donate();
   const updateChurchPhotos = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedPhotos = Array.from(event.target.files ?? []);
     if (selectedPhotos.length > 3) {
@@ -248,17 +262,14 @@ export function ModalLayer({
   const createWallet = async () => {
     setMessage("");
     try {
-      if (walletPassword !== walletPasswordConfirmation)
-        throw new Error("Wallet passwords do not match.");
-      const { address } = await createBrowserWallet(walletPassword, "TX wallet", ownerEmail ?? undefined);
+      const { address } = await createPasskeyBrowserWallet("TX wallet", ownerEmail ?? undefined);
       await identityRepository.syncProfile(address);
       setProfile((current) => ({
         ...(current ?? {}),
         wallet_address: address,
       }));
       setWalletExists(true);
-      setWalletPassword("");
-      setWalletPasswordConfirmation("");
+      window.dispatchEvent(new Event("soundfaith-wallet-changed"));
       close();
     } catch (error) {
       setMessage(
@@ -283,6 +294,7 @@ export function ModalLayer({
         wallet_address: address,
       }));
       setWalletExists(true);
+      window.dispatchEvent(new Event("soundfaith-wallet-changed"));
       close();
     } catch (error) {
       setMessage(
@@ -295,7 +307,6 @@ export function ModalLayer({
     try {
       const { address } = await importBrowserWalletMnemonic(
         mnemonic,
-        walletPassword,
         null,
         "Recovered wallet",
         ownerEmail ?? undefined,
@@ -306,8 +317,8 @@ export function ModalLayer({
         wallet_address: address,
       }));
       setWalletExists(true);
+      window.dispatchEvent(new Event("soundfaith-wallet-changed"));
       setMnemonic("");
-      setWalletPassword("");
       close();
     } catch (error) {
       setMessage(
@@ -334,7 +345,6 @@ export function ModalLayer({
     (isWalletSetupModal ? modal.walletAddress : null);
   const isWalletSetup = isWalletSetupModal && !rememberedWalletAddress;
   const swipeClose = () => {
-    if (isWalletSetupModal) return;
     setClosing(true);
     window.setTimeout(close, 220);
   };
@@ -343,7 +353,7 @@ export function ModalLayer({
       className="modal-backdrop"
       role="presentation"
       onMouseDown={(event) => {
-        if (!isWalletSetupModal && event.target === event.currentTarget)
+        if (event.target === event.currentTarget)
           close();
       }}
     >
@@ -356,15 +366,13 @@ export function ModalLayer({
         onTouchMove={(event) => { if (touchStartY.current !== null) { touchDeltaY.current = Math.max(0, (event.touches[0]?.clientY ?? touchStartY.current) - touchStartY.current); } }}
         onTouchEnd={() => { if (touchDeltaY.current > 80) swipeClose(); touchStartY.current = null; touchDeltaY.current = 0; }}
       >
-        {!isWalletSetupModal && (
-          <button
-            className="modal-close"
-            onClick={close}
-            aria-label="Close dialog"
-          >
-            <X size={18} />
-          </button>
-        )}
+        <button
+          className="modal-close"
+          onClick={close}
+          aria-label="Close dialog"
+        >
+          <X size={18} />
+        </button>
         {isWalletSetupModal && rememberedWalletAddress && (
           <div className="wallet-onboarding">
             <p className="eyebrow">Reconnect your TX wallet</p>
@@ -428,17 +436,10 @@ export function ModalLayer({
                   value={mnemonic}
                   onChange={(event) => setMnemonic(event.target.value)}
                 />
-                <input
-                  type="password"
-                  minLength={12}
-                  placeholder="New local wallet password (12+ characters)"
-                  value={walletPassword}
-                  onChange={(event) => setWalletPassword(event.target.value)}
-                />
                 <button
                   className="button button-dark modal-action"
                   onClick={() => void importMnemonic()}
-                  disabled={!mnemonic.trim() || walletPassword.length < 12}
+                  disabled={!mnemonic.trim()}
                 >
                   Restore wallet
                 </button>
@@ -452,28 +453,11 @@ export function ModalLayer({
             )}
             {walletSetupMode === "create" && (
               <div className="wallet-create-form">
-                <input
-                  type="password"
-                  minLength={12}
-                  placeholder="Wallet password (12+ characters)"
-                  value={walletPassword}
-                  onChange={(event) => setWalletPassword(event.target.value)}
-                />
-                <input
-                  type="password"
-                  minLength={12}
-                  placeholder="Repeat wallet password"
-                  value={walletPasswordConfirmation}
-                  onChange={(event) =>
-                    setWalletPasswordConfirmation(event.target.value)
-                  }
-                />
                 <button
                   className="button button-coral modal-action"
                   onClick={createWallet}
-                  disabled={!walletPassword || walletPassword.length < 12}
                 >
-                  Create wallet
+                  Create passkey wallet
                 </button>
                 <button
                   className="button button-dark modal-action"
@@ -505,7 +489,7 @@ export function ModalLayer({
             <p className="modal-copy">
               {rememberedWalletAddress
                 ? "This account already has a wallet linked to it. Import an encrypted backup or enter the mnemonic from your other laptop. The recovery data stays in this browser."
-                : "Your social login is ready. Create or import a wallet before continuing. The encrypted backup stays on your device; SoundFaith never receives your mnemonic or password."}
+                : "Your social login is ready. Create a passkey wallet before continuing. Your passkey unlocks it locally; SoundFaith never receives your wallet keys."}
             </p>
             {rememberedWalletAddress && (
               <p className="modal-footnote account-wallet-address">
@@ -514,28 +498,11 @@ export function ModalLayer({
             )}
             {!rememberedWalletAddress && (
               <>
-                <input
-                  type="password"
-                  minLength={12}
-                  placeholder="Wallet password (12+ characters)"
-                  value={walletPassword}
-                  onChange={(event) => setWalletPassword(event.target.value)}
-                />
-                <input
-                  type="password"
-                  minLength={12}
-                  placeholder="Repeat wallet password"
-                  value={walletPasswordConfirmation}
-                  onChange={(event) =>
-                    setWalletPasswordConfirmation(event.target.value)
-                  }
-                />
                 <button
                   className="button button-coral modal-action"
                   onClick={createWallet}
-                  disabled={!walletPassword || walletPassword.length < 12}
                 >
-                  Create wallet <Wallet size={15} />
+                  Create passkey wallet <Wallet size={15} />
                 </button>
               </>
             )}
@@ -555,17 +522,10 @@ export function ModalLayer({
                   value={mnemonic}
                   onChange={(event) => setMnemonic(event.target.value)}
                 />
-                <input
-                  type="password"
-                  minLength={12}
-                  placeholder="New local wallet password (12+ characters)"
-                  value={walletPassword}
-                  onChange={(event) => setWalletPassword(event.target.value)}
-                />
                 <button
                   className="button button-dark modal-action"
                   onClick={() => void importMnemonic()}
-                  disabled={!mnemonic.trim() || walletPassword.length < 12}
+                  disabled={!mnemonic.trim()}
                 >
                   Restore from mnemonic <Wallet size={15} />
                 </button>
@@ -632,31 +592,14 @@ export function ModalLayer({
               <div className="wallet-setup">
                 <p className="eyebrow">Create your local wallet</p>
                 <p className="modal-copy">
-                  The encrypted wallet stays in this browser. SoundFaith never
-                  receives your mnemonic or password.
+                  Your passkey protects this wallet locally. SoundFaith never
+                  receives your wallet keys or recovery phrase.
                 </p>
-                <input
-                  type="password"
-                  minLength={12}
-                  placeholder="Wallet password (12+ characters)"
-                  value={walletPassword}
-                  onChange={(event) => setWalletPassword(event.target.value)}
-                />
-                <input
-                  type="password"
-                  minLength={12}
-                  placeholder="Repeat wallet password"
-                  value={walletPasswordConfirmation}
-                  onChange={(event) =>
-                    setWalletPasswordConfirmation(event.target.value)
-                  }
-                />
                 <button
                   className="button button-coral modal-action"
                   onClick={createWallet}
-                  disabled={!walletPassword || walletPassword.length < 12}
                 >
-                  Create TX wallet <Wallet size={15} />
+                  Create passkey wallet <Wallet size={15} />
                 </button>
                 <label className="wallet-import">
                   Import encrypted backup
@@ -834,33 +777,30 @@ export function ModalLayer({
               Connect to <em>continue.</em>
             </h2>
             <p className="modal-copy">
-              Use Google, Apple, or email to create your SoundFaith profile.
-              Wallet signing is added after a secure wallet backup is
-              configured.
+              Sign in with your preferred account. Wallet signing is added
+              after a secure wallet backup is configured.
             </p>
             <div className="social-options">
               <button type="button" onClick={() => connect("google")}>
-                <span className="social-icon google">G</span> Continue with
-                Google <ArrowUpRight size={15} />
+                <span className="social-icon google" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="#4285F4" d="M21.35 12.27c0-.79-.07-1.55-.23-2.27H12v4.3h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.7 2.91-4.2 2.91-7.42Z"/><path fill="#34A853" d="M12 21.75c2.63 0 4.84-.87 6.45-2.36l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.3v2.53A9.75 9.75 0 0 0 12 21.75Z"/><path fill="#FBBC05" d="M6.54 13.83A5.86 5.86 0 0 1 6.23 12c0-.64.11-1.26.31-1.83V7.64H3.3A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.06 1.05 4.36l3.24-2.53Z"/><path fill="#EA4335" d="M12 6.14c1.43 0 2.71.49 3.72 1.45l2.79-2.79C16.84 3.23 14.63 2.25 12 2.25a9.75 9.75 0 0 0-8.7 5.39l3.24 2.53C7.31 7.86 9.46 6.14 12 6.14Z"/></svg></span>
+                <span>Continue with Google</span>
+                <ArrowUpRight size={15} />
               </button>
               <button type="button" onClick={() => connect("apple")}>
-                <span className="social-icon apple">&#x2022;</span> Continue
-                with Apple <ArrowUpRight size={15} />
+                <span className="social-icon apple" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M16.77 12.77c.02 2.17 1.9 2.9 1.92 2.91-.02.05-.3 1.03-1 2.04-.6.87-1.23 1.74-2.22 1.76-.97.02-1.28-.57-2.39-.57-1.12 0-1.46.55-2.38.59-.96.03-1.69-.94-2.3-1.81-1.25-1.8-2.2-5.08-.92-7.3.64-1.1 1.69-1.8 2.82-1.82.96-.02 1.87.64 2.39.64.51 0 1.57-.79 2.64-.67.45.02 1.73.18 2.55 1.36-.07.04-1.52.89-1.51 2.67ZM15.03 5.23c.48-.58.8-1.39.71-2.2-.69.03-1.52.46-2.01 1.03-.44.5-.83 1.32-.73 2.11.77.06 1.55-.39 2.03-.94Z"/></svg></span>
+                <span>Continue with Apple</span>
+                <ArrowUpRight size={15} />
               </button>
-              <div className="email-auth">
-                <input
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  type="email"
-                  placeholder="you@example.com"
-                  aria-label="Email address"
-                />
-                <button type="button" onClick={() => connect("email")}>
-                  <span className="social-icon email">@</span> Email me a
-                  sign-in link <ArrowUpRight size={15} />
-                </button>
-              </div>
             </div>
+            {!emailSignInOpen ? <button className="email-sign-in-trigger" type="button" onClick={() => setEmailSignInOpen(true)}>
+              Use email instead <ArrowUpRight size={14} />
+            </button> : <div className="email-auth">
+              <label htmlFor="sign-in-email">Email address</label>
+              <input id="sign-in-email" value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="you@example.com" />
+              <button className="button button-coral" type="button" onClick={() => connect("email")}>
+                Email me a sign-in link <ArrowUpRight size={15} />
+              </button>
+            </div>}
             {message && <p className="modal-footnote">{message}</p>}
             <div className="modal-network">
               <span className="status-orbit">
@@ -928,11 +868,13 @@ export function ModalLayer({
               <label className="custom-amount">
                 <span>Donation amount</span>
                 <input
+                  className="donation-amount-input"
                   type="number"
                   min="0.000001"
                   step="0.000001"
                   inputMode="decimal"
                   value={customAmount}
+                  autoComplete="off"
                   onChange={(event) => {
                     const value = event.target.value;
                     setCustomAmount(value);
@@ -942,36 +884,25 @@ export function ModalLayer({
                 />
                 <span>TX</span>
               </label>
+              {remainingAmount !== null && remainingAmount > 0 && <p className="modal-footnote remaining-donation-note">Remaining to fully fund: <strong>{remainingAmount.toFixed(6)} TX</strong> <button type="button" className="text-link" onClick={() => { setAmount(remainingAmount); setCustomAmount(remainingAmount.toFixed(6)); }}>Donate remaining</button></p>}
+              {localWalletAvailable && <p className="wallet-balance-note">Available balance: <strong>{balance === null ? "Loading..." : `${balance.toFixed(6)} TX`}</strong></p>}
               <p className="modal-footnote">{txUsdRate === null ? "Loading current TX rate..." : `1 TX = ${formatExchangeRate(txUsdRate)} · Estimated value: ${formatExchangeRate(amount * txUsdRate)}`}</p>
-              {localWalletAvailable && (
-                <input
-                  className="wallet-signing-password"
-                  type="password"
-                  placeholder="Wallet password"
-                  value={donationPassword}
-                  onChange={(event) => setDonationPassword(event.target.value)}
-                />
-              )}
               <button
                 className="button button-coral modal-action"
-                onClick={donate}
+                onClick={requestDonationUnlock}
                 disabled={
                   loading ||
                   txUsdRate === null ||
-                  (localWalletAvailable && !donationPassword) ||
                   !Number.isFinite(amount) ||
                   amount <= 0
                 }
               >
                   {loading
                     ? "Preparing contribution..."
-                    : `Continue with ${Number.isFinite(amount) && amount > 0 ? `${amount} TX` : "custom amount"}`}{" "}
+                    : passkeyWallet ? "Continue with passkey" : `Continue with ${Number.isFinite(amount) && amount > 0 ? `${amount} TX` : "custom amount"}`}{" "}
                 <ArrowUpRight size={16} />
               </button>
               {message && <p className="modal-footnote">{message}</p>}
-              <p className="modal-footnote">
-                Native TX · funds remain in the project vault
-              </p>
             </>
           ))}
       </section>

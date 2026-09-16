@@ -20,8 +20,7 @@ export const coreumTestnet: TokenMetadata = {
   decimals: 6,
 };
 
-export const donationContractAddress =
-  import.meta.env.VITE_COREUM_DONATION_CONTRACT ?? "testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p";
+export const donationContractAddress = import.meta.env.VITE_COREUM_DONATION_CONTRACT?.trim() ?? "";
 
 export const coreumRpcUrl = import.meta.env.VITE_COREUM_RPC_URL ?? "";
 

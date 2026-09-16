@@ -23,7 +23,8 @@
     "coreum:relayer:local": "tsx scripts/invoke-coreum-relayer.ts",
     "coreum:relayer:credential": "powershell -ExecutionPolicy Bypass -File .\\scripts\\relayer-from-windows-credential.ps1",
     "coreum:relayer:install": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-relayer-task.ps1",
-    "coreum:relayer:uninstall": "powershell -ExecutionPolicy Bypass -File .\\scripts\\uninstall-relayer-task.ps1"
+    "coreum:relayer:uninstall": "powershell -ExecutionPolicy Bypass -File .\\scripts\\uninstall-relayer-task.ps1",
+    "tx-rate:update": "tsx scripts/invoke-tx-rate.ts"
     ,"coreum:register": "tsx scripts/register-project.ts",
     "coreum:seed:samples": "tsx scripts/seed-sample-projects.ts",
     "coreum:claim": "tsx scripts/claim-project.ts",

@@ -27,7 +27,7 @@ const chain = await SigningCosmWasmClient.connectWithSigner(rpcUrl, wallet)
 const queryClient = await CosmWasmClient.connect(rpcUrl)
 const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } })
 
-type PendingProject = { id: string; goal_tx: number; owner_wallet_address: string | null }
+type PendingProject = { id: string; chain_project_id: string | null; goal_tx: number; owner_wallet_address: string | null }
 
 async function updateHeartbeat(input: { success?: boolean; error?: string; projectId?: string; transactionHash?: string } = {}) {
   const { error } = await supabase.rpc('relayer_heartbeat_update', {
@@ -51,20 +51,25 @@ async function registerProject(project: PendingProject) {
   const txUsdRate = Number(rate.tx_usd_rate)
   let transactionHash: string | undefined
   try {
-    const existing = await queryClient.queryContractSmart(configuredContractAddress, { project: { project_id: project.id } }) as { status?: string }
-    if (!existing?.status) throw new Error('On-chain project record is incomplete')
+    const chainProjectId = project.chain_project_id ?? `soundfaith:${project.id}`
+    const existing = await queryClient.queryContractSmart(configuredContractAddress, { project: { project_id: chainProjectId } }) as { project?: { status?: string } }
+    if (!existing?.project?.status) throw new Error('On-chain project record is incomplete')
   } catch {
+    const chainProjectId = project.chain_project_id ?? `soundfaith:${project.id}`
     const result = await chain.execute(
       account.address,
       configuredContractAddress,
       {
         register_project: {
           project: {
-            id: project.id,
-            goal_micro_tx: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
-            status: 'active',
-            metadata_token_id: '',
+            id: chainProjectId,
             beneficiary: project.owner_wallet_address,
+            goal: String(Math.round((Number(project.goal_tx) / txUsdRate) * 1_000_000)),
+            metadata_uri: null,
+            platform_id: 'soundfaith',
+            fee_bps: 0,
+            expires_at: null,
+            status: 'active',
           },
         },
       },
@@ -76,7 +81,12 @@ async function registerProject(project: PendingProject) {
 
   await updateHeartbeat({ success: true, projectId: project.id, transactionHash })
 
-  const { error } = await supabase.rpc('relayer_activate_project', { target_project_id: project.id })
+  const chainProjectId = project.chain_project_id ?? `soundfaith:${project.id}`
+  const { error } = await supabase.rpc('relayer_activate_project', {
+    target_project_id: project.id,
+    next_chain_project_id: chainProjectId,
+    next_transaction_hash: transactionHash ?? '',
+  })
   if (error) throw error
   console.log(`${transactionHash ? `Registered ${project.id} on ${chainId}: ${transactionHash}` : `Activated existing ${project.id} on ${chainId}`}`)
 }
@@ -84,7 +94,7 @@ async function registerProject(project: PendingProject) {
 async function relayPendingProjects() {
   const { data, error } = await supabase
     .from('projects')
-    .select('id, goal_tx, owner_wallet_address')
+    .select('id, chain_project_id, goal_tx, owner_wallet_address')
     .eq('status', 'approved_pending_chain')
     .order('created_at', { ascending: true })
 

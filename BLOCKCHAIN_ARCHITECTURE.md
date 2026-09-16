@@ -17,11 +17,11 @@ The beneficiary is therefore fixed on-chain when registration occurs, before don
 
 ### 1. SoundFaith donation-vault contract
 
-The active testnet contract is:
+The active testnet white-label protocol contract is:
 
-`testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey`
+`testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p`
 
-It was deployed as code ID `3939` on TX testnet (`coreum-testnet-1`).
+It is running code ID `3951` on TX testnet (`coreum-testnet-1`). The older code ID `3950` deployment at `testcore184vcst03q9p540al5jw3pytjprn7mlr456w9xh0th5awgeyvf3wqz8d8mr` is retained only for reconciliation of previously registered projects and funds.
 
 This contract:
 

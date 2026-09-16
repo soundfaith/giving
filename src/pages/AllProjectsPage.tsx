@@ -1,7 +1,7 @@
 import React from "react";
 import { Search, Sparkles, X } from "lucide-react";
 import type { Project } from "../lib/supabase";
-import { categories } from "../lib/projects";
+import { categories, isGoalReachedStatus } from "../lib/projects";
 import { ProjectCard } from "../components/ProjectCard";
 
 export function AllProjectsPage({ projects, onProject, onDonate }: {
@@ -17,8 +17,8 @@ export function AllProjectsPage({ projects, onProject, onDonate }: {
     const haystack = `${project.title} ${project.church} ${project.location} ${project.category}`.toLowerCase();
     return matchesCategory && haystack.includes(query.toLowerCase());
   });
-  const activeProjects = visibleProjects.filter((project) => project.status !== "funded" && project.status !== "closed");
-  const fundedProjects = visibleProjects.filter((project) => project.status === "funded");
+  const activeProjects = visibleProjects.filter((project) => !isGoalReachedStatus(project.status) && project.status !== "closed");
+  const fundedProjects = visibleProjects.filter((project) => isGoalReachedStatus(project.status));
   const completedProjects = visibleProjects.filter((project) => project.status === "closed");
   const renderCards = (items: Project[], compact = false) => <div className={compact ? "project-grid project-grid-compact" : "project-grid"}>{items.map((project, index) => <ProjectCard key={project.id} project={project} index={index} compact={compact} onDetails={() => onProject(project)} onDonate={() => onDonate(project)} />)}</div>;
 

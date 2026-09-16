@@ -20,6 +20,10 @@ export function formatExchangeRate(value: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 8 }).format(value);
 }
 
+export function isGoalReachedStatus(status?: string) {
+  return status === "funded" || status === "unstaking";
+}
+
 function fundingProgress(project: Project) {
   return project.goal > 0 ? Math.min(1, Math.max(0, project.raised / project.goal)) : 0;
 }
@@ -37,7 +41,7 @@ function hotScore(project: Project, now: number) {
 }
 
 export function selectFeaturedProjects(projects: Project[], count = 3, now = Date.now()) {
-  const activeProjects = projects.filter((project) => project.status !== "funded" && project.status !== "closed");
+  const activeProjects = projects.filter((project) => !isGoalReachedStatus(project.status) && project.status !== "closed");
   const selected: Project[] = [];
   const add = (project?: Project) => {
     if (project && !selected.some((item) => item.id === project.id) && selected.length < count) selected.push(project);

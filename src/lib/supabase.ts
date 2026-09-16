@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { getProjectOnChain } from "./wallet";
+import { getChainProjectId, getProjectOnChain } from "./wallet";
 
 export type ProjectCategory = "Sound & AV" | "Worship & Gathering" | "Facilities & Maintenance" | "Community & Outreach" | "General Church Needs";
 
@@ -189,7 +189,7 @@ export const projectRepository = {
         likes: Number(engagement?.like_count ?? 0),
         shares: Number(engagement?.share_count ?? 0),
         likedByUser: Boolean(engagement?.liked_by_user),
-        chainProjectId: project.chain_project_id ?? project.id,
+        chainProjectId: project.chain_project_id ?? getChainProjectId(project.id),
         chainSynced: false,
       };
     });
@@ -226,7 +226,7 @@ export const projectRepository = {
       likes: 0,
       shares: 0,
       likedByUser: false,
-      chainProjectId: data.chain_project_id ?? projectId,
+      chainProjectId: data.chain_project_id ?? getChainProjectId(projectId),
       chainSynced: false,
     };
 
@@ -255,6 +255,7 @@ export const projectRepository = {
       ...project,
       raised: (Number(onChainProject.raised_micro_tx ?? "0") / 1_000_000) * txUsdRate,
       donors: Number(onChainProject.donor_count ?? 0),
+      status: onChainProject.status.toLowerCase(),
       chainSynced: true,
     };
   },
@@ -407,6 +408,16 @@ export const identityRepository = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  async clearWallet() {
+    if (!supabase) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error: walletError } = await supabase.from("profile_wallets").delete().eq("user_id", user.id);
+    if (walletError) throw walletError;
+    const { error: profileError } = await supabase.from("profiles").update({ wallet_address: null, updated_at: new Date().toISOString() }).eq("id", user.id);
+    if (profileError) throw profileError;
   },
 
   async updateProfileHandle(handle: string) {

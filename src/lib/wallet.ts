@@ -1,17 +1,13 @@
 import { CosmWasmClient, SigningCosmWasmClient } from "@cosmjs/cosmwasm-stargate";
 import type { OfflineSigner } from "@cosmjs/proto-signing";
 import { StargateClient } from "@cosmjs/stargate";
-import { unlockBrowserWallet } from "./walletVault";
+import { getBrowserWalletAddress, unlockBrowserWallet } from "./walletVault";
 
 const chainId = import.meta.env.VITE_COREUM_CHAIN_ID ?? "coreum-testnet-1";
 const rpcUrl =
   import.meta.env.VITE_COREUM_RPC_URL ??
   "https://rpc.testnet-1.tx.org:443";
-const currentTestnetContract = "testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p";
-const configuredContractAddress = import.meta.env.VITE_COREUM_DONATION_CONTRACT ?? currentTestnetContract;
-const contractAddress = configuredContractAddress === "testcore18wsejajlp9flsdymm5j6xutuwkumrvg7twuz9rzwyf7cnq040fpqluslfg"
-  ? currentTestnetContract
-  : configuredContractAddress;
+const contractAddress = import.meta.env.VITE_COREUM_DONATION_CONTRACT?.trim();
 const network = import.meta.env.VITE_COREUM_NETWORK ?? "testnet";
 const nativeDenom = network === "mainnet" ? "ucore" : "utestcore";
 const feeDenom = nativeDenom;
@@ -20,6 +16,7 @@ const donationDenom = nativeDenom;
 export function friendlyWalletError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();
+  if (normalized.includes("invalid tag") || normalized.includes("unable to decrypt") || normalized.includes("passkey") && normalized.includes("wallet")) return "This wallet could not be unlocked with the current passkey. Re-import its recovery phrase to create a passkey wallet on this device.";
   if (normalized.startsWith("this donation is larger than the project's remaining goal")) return message;
   if (normalized.includes("donation would exceed the project goal") || normalized.includes("goal_exceeded")) return "This donation is larger than the project's remaining goal. Please choose a smaller amount.";
   if (normalized.includes("project is not active") || normalized.includes("project is not accepting donations")) return "This project is not accepting donations right now.";
@@ -73,8 +70,8 @@ type KeplrWindow = Window & {
 
 export type WalletSession = { address: string; client: SigningCosmWasmClient };
 
-export async function connectBrowserWallet(password: string): Promise<WalletSession> {
-  const { wallet, address } = await unlockBrowserWallet(password);
+export async function connectBrowserWallet(): Promise<WalletSession> {
+  const { wallet, address } = await unlockBrowserWallet();
   const client = await SigningCosmWasmClient.connectWithSigner(rpcUrl, wallet);
   return { address, client };
 }
@@ -93,7 +90,7 @@ export async function connectCoreumWallet(): Promise<WalletSession> {
   return { address, client };
 }
 
-export async function donateWithWallet(projectId: string, amountTx: number, password?: string) {
+export async function donateWithWallet(projectId: string, amountTx: number) {
   if (!contractAddress)
     throw new Error("VITE_COREUM_DONATION_CONTRACT is not configured");
   let onChainProject: OnChainProject;
@@ -107,8 +104,8 @@ export async function donateWithWallet(projectId: string, amountTx: number, pass
     throw new Error(`This project is not accepting donations on-chain (status: ${onChainProject.status}).`);
   }
   const requestedAmount = Math.round(amountTx * 1_000_000);
-  const { address, client } = password
-    ? await connectBrowserWallet(password)
+  const { address, client } = (await getBrowserWalletAddress())
+    ? await connectBrowserWallet()
     : await connectCoreumWallet();
     const chainClient = await StargateClient.connect(rpcUrl);
     const donationBalance = await chainClient.getBalance(address, donationDenom);
@@ -127,7 +124,13 @@ export type OnChainProject = {
   status: string;
   metadata_token_id: string;
   beneficiary: string;
+  unstaking_started_at: number | null;
+  unbonding_seconds: number;
 };
+
+export function getChainProjectId(projectId: string) {
+  return projectId.includes(":") ? projectId : `soundfaith:${projectId}`;
+}
 
 function normalizeOnChainProject(raw: Record<string, unknown>, fallbackId: string): OnChainProject {
   const project = (raw?.project as Record<string, unknown>) ?? raw ?? {};
@@ -141,6 +144,8 @@ function normalizeOnChainProject(raw: Record<string, unknown>, fallbackId: strin
     status: String(project.status ?? "unknown"),
     metadata_token_id: String(project.metadata_token_id ?? ""),
     beneficiary: String(project.beneficiary ?? ""),
+    unstaking_started_at: project.unstaking_started_at == null ? null : Number(project.unstaking_started_at),
+    unbonding_seconds: Number(project.unbonding_seconds ?? 0),
   };
 }
 
@@ -148,15 +153,17 @@ export async function getProjectOnChain(projectId: string): Promise<OnChainProje
   if (!contractAddress) throw new Error("VITE_COREUM_DONATION_CONTRACT is not configured");
   const client = await CosmWasmClient.connect(rpcUrl);
   const response = (await client.queryContractSmart(contractAddress, {
-    project: { project_id: projectId },
+    project: { project_id: getChainProjectId(projectId) },
   })) as Record<string, unknown>;
-  return normalizeOnChainProject(response, projectId);
+  return normalizeOnChainProject(response, getChainProjectId(projectId));
 }
 
-export async function claimProjectFunds(projectId: string, password?: string) {
+export async function claimProjectFunds(projectId: string) {
   if (!contractAddress)
     throw new Error("VITE_COREUM_DONATION_CONTRACT is not configured");
-  const { address, client } = password ? await connectBrowserWallet(password) : await connectCoreumWallet();
+  const { address, client } = (await getBrowserWalletAddress())
+    ? await connectBrowserWallet()
+    : await connectCoreumWallet();
     const result = await client.execute(address, contractAddress, { claim_project_funds: { project_id: projectId } }, { amount: [{ denom: feeDenom, amount: '50000' }], gas: '1000000' }, 'SoundFaith project claim');
   return { address, txHash: result.transactionHash };
 }

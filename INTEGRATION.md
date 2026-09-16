@@ -3,12 +3,12 @@
 The shared white-label protocol is deployed on Coreum testnet. All partner platforms, including the first `giving` integration, use this single contract; partner platforms do not deploy a separate donation contract.
 
 ```text
-Contract: testcore184vcst03q9p540al5jw3pytjprn7mlr456w9xh0th5awgeyvf3wqz8d8mr
-Explorer: https://explorer.testnet-1.tx.org/tx/accounts/testcore184vcst03q9p540al5jw3pytjprn7mlr456w9xh0th5awgeyvf3wqz8d8mr
+Contract: testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p
+Explorer: https://explorer.testnet-1.tx.org/tx/accounts/testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p
 Chain ID: coreum-testnet-1
 RPC: https://rpc.testnet-1.tx.org:443
 Native denom: utestcore
-Code ID: 3950
+Code ID: 3951
 ```
 
 The protocol was instantiated with an empty project registry. The `giving` application registers its approved projects through the protocol owner/relayer and then uses the same shared address for donations, queries, claims, expiry, and refunds.

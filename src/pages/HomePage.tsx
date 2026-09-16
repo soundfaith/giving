@@ -1,6 +1,6 @@
 import { ArrowUpRight, Zap, Sparkles, Smartphone, Wallet, TrendingUp, Lock, Link2, Shield } from "lucide-react";
 import type { Project } from "../lib/supabase";
-import { formatMoney, selectFeaturedProjects } from "../lib/projects";
+import { formatMoney, isGoalReachedStatus, selectFeaturedProjects } from "../lib/projects";
 import { Progress, ProjectVisual } from "../components/ProjectPrimitives";
 
 export function HomePage({ projects, onProject, onDonate }: {
@@ -65,7 +65,7 @@ export function HomePage({ projects, onProject, onDonate }: {
                 <div className="card-copy">
                   <div className="card-meta">
                     <span className="category-label">{project.category}</span>
-                    {project.status === "funded" && <span className="funded-badge">Funded</span>}
+                    {isGoalReachedStatus(project.status) && <span className="funded-badge">{project.status === "unstaking" ? "Claiming" : "Funded"}</span>}
                   </div>
                   <p className="card-church">{project.church}</p>
                   <h3>{project.title}</h3>
@@ -80,8 +80,8 @@ export function HomePage({ projects, onProject, onDonate }: {
                     <Progress project={project} />
                   </div>
                   <div className="card-footer">
-                  <button className="button button-coral button-small" disabled={project.status === "funded"} onClick={() => onDonate(project)}>
-                    {project.status === "funded" ? "Funded" : <>Give now <ArrowUpRight size={14} /></>}
+                  <button className="button button-coral button-small" disabled={isGoalReachedStatus(project.status)} onClick={() => onDonate(project)}>
+                    {isGoalReachedStatus(project.status) ? project.status === "unstaking" ? "Claiming" : "Funded" : <>Give now <ArrowUpRight size={14} /></>}
                   </button>
                   <button className="text-link" onClick={() => onProject(project)}>
                     Learn more

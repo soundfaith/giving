@@ -16,9 +16,11 @@ This runbook is for the repository's TX testnet and Supabase deployment workflow
 - RPC: `https://rpc.testnet-1.tx.org:443`
 - Native denom: `utestcore`
 - Staking validator: `testcorevaloper1eegug92k2gp9c6kqjsadk3tku29sr2rsryjszy`
-- Contract: `testcore1896fkkzeuwlnmaqc422daktfetjww2a8dg0tes2d36nq4day4rzs4424ey`
-- Code ID: `3939`
+- White-label protocol contract: `testcore1kwvadmyvz986c6tnwh4axgqc97klhugq0ewckf86m53tg5xug2gsgwxc7p`
+- Code ID: `3951`
 - Owner/deployer wallet: `testcore15xhvchxtkstyhqvpl8pdcfkj69khfp0t8rmhxv`
+
+The code ID `3950` deployment at `testcore184vcst03q9p540al5jw3pytjprn7mlr456w9xh0th5awgeyvf3wqz8d8mr` is superseded. Do not register new projects or donations against it.
 
 The owner wallet is loaded from the Windows Generic Credential:
 
