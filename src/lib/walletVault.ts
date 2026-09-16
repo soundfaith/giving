@@ -41,24 +41,27 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
   if (!window.isSecureContext) throw new Error("Passkey wallets require a secure HTTPS connection. Open the deployed app using its HTTPS Vercel URL.");
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkey wallet unlock.");
   const storedCredentialId = credentialIdOverride ?? window.localStorage.getItem(biometricCredentialKey);
-  let credential: Credential | null;
+  let credentialId = storedCredentialId;
   if (create || !storedCredentialId) {
-    credential = await navigator.credentials.create({
+    const credential = await navigator.credentials.create({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)) as unknown as BufferSource,
         rp: { id: window.location.hostname, name: "SoundFaith" },
         user: { id: crypto.getRandomValues(new Uint8Array(16)) as unknown as BufferSource, name: "soundfaith-wallet", displayName: "SoundFaith wallet" },
         pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
-        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
-        extensions: { prf: { eval: { first: salt as unknown as BufferSource } } },
+        authenticatorSelection: { residentKey: "required", userVerification: "required" },
         timeout: 60000,
       },
     });
-  } else {
-    const base64 = storedCredentialId.replace(/-/g, "+").replace(/_/g, "/");
+    if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
+    credentialId = base64Url(new Uint8Array(credential.rawId));
+  }
+  if (!credentialId) throw new Error("Passkey registration did not return a credential.");
+  {
+    const base64 = credentialId.replace(/-/g, "+").replace(/_/g, "/");
     const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
     const id = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    credential = await navigator.credentials.get({
+    const credential = await navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)) as unknown as BufferSource,
         allowCredentials: [{ id: id as unknown as BufferSource, type: "public-key" }],
@@ -67,13 +70,12 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
         timeout: 60000,
       },
     });
+    if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
+    window.localStorage.setItem(biometricCredentialKey, credentialId);
+    const result = (credential.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf?.results?.first;
+    if (!result) throw new Error("This device completed passkey verification, but its passkey provider does not support secure wallet storage (PRF). Try Chrome on Android, update the browser and screen lock, or import a recovery phrase instead.");
+    return new Uint8Array(result);
   }
-  if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
-  const credentialId = base64Url(new Uint8Array(credential.rawId));
-  window.localStorage.setItem(biometricCredentialKey, credentialId);
-  const result = (credential.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf?.results?.first;
-  if (!result) throw new Error("This device completed passkey verification, but its passkey provider does not support secure wallet storage (PRF). Try Chrome on Android, update the browser and screen lock, or import a recovery phrase instead.");
-  return new Uint8Array(result);
 }
 
 async function wrapWalletSecret(secret: string, passkeyKey: Uint8Array, credentialId: string, salt: Uint8Array) {
