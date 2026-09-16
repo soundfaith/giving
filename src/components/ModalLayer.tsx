@@ -261,6 +261,7 @@ export function ModalLayer({
   };
   const createWallet = async () => {
     setMessage("");
+    setLoading(true);
     try {
       const { address } = await createPasskeyBrowserWallet("TX wallet", ownerEmail ?? undefined);
       await identityRepository.syncProfile(address);
@@ -272,9 +273,19 @@ export function ModalLayer({
       window.dispatchEvent(new Event("soundfaith-wallet-changed"));
       close();
     } catch (error) {
+      const name = error instanceof DOMException ? error.name : "";
+      const detail = error instanceof Error ? error.message : "";
       setMessage(
-        error instanceof Error ? error.message : "Unable to create wallet",
+        name === "NotAllowedError"
+          ? "Passkey setup was cancelled or timed out. Keep this page open and try again."
+          : name === "NotSupportedError"
+            ? "This browser or device does not support the passkey feature required for a wallet. Try Chrome on Android or import a recovery phrase."
+            : name === "SecurityError"
+              ? "Passkeys are blocked for this site. Open the HTTPS Vercel URL directly, rather than an embedded or private-browser page."
+              : detail || "Unable to create wallet on this device.",
       );
+    } finally {
+      setLoading(false);
     }
   };
   const importWallet = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -456,8 +467,10 @@ export function ModalLayer({
                 <button
                   className="button button-coral modal-action"
                   onClick={createWallet}
+                  disabled={loading}
                 >
-                  Create passkey wallet
+                  {loading ? "Waiting for device..." : "Create passkey wallet"}
+                  <Wallet size={15} />
                 </button>
                 <button
                   className="button button-dark modal-action"
@@ -501,8 +514,9 @@ export function ModalLayer({
                 <button
                   className="button button-coral modal-action"
                   onClick={createWallet}
+                  disabled={loading}
                 >
-                  Create passkey wallet <Wallet size={15} />
+                  {loading ? "Waiting for device..." : "Create passkey wallet"} <Wallet size={15} />
                 </button>
               </>
             )}
@@ -598,8 +612,9 @@ export function ModalLayer({
                 <button
                   className="button button-coral modal-action"
                   onClick={createWallet}
+                  disabled={loading}
                 >
-                  Create passkey wallet <Wallet size={15} />
+                  {loading ? "Waiting for device..." : "Create passkey wallet"} <Wallet size={15} />
                 </button>
                 <label className="wallet-import">
                   Import encrypted backup

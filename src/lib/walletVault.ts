@@ -36,6 +36,7 @@ function randomSecret() {
 }
 
 async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverride?: string) {
+  if (!window.isSecureContext) throw new Error("Passkey wallets require a secure HTTPS connection. Open the deployed app using its HTTPS Vercel URL.");
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkey wallet unlock.");
   const storedCredentialId = credentialIdOverride ?? window.localStorage.getItem(biometricCredentialKey);
   let credential: Credential | null;
@@ -43,7 +44,7 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
     credential = await navigator.credentials.create({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)) as unknown as BufferSource,
-        rp: { name: "SoundFaith" },
+        rp: { id: window.location.hostname, name: "SoundFaith" },
         user: { id: crypto.getRandomValues(new Uint8Array(16)) as unknown as BufferSource, name: "soundfaith-wallet", displayName: "SoundFaith wallet" },
         pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
         authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
@@ -68,7 +69,7 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
   if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
   const credentialId = base64Url(new Uint8Array(credential.rawId));
   const result = (credential.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf?.results?.first;
-  if (!result) throw new Error("This passkey does not support secure wallet key storage. Use a device with passkey PRF support.");
+  if (!result) throw new Error("This device completed passkey verification, but its passkey provider does not support secure wallet storage (PRF). Try Chrome on Android, update the browser and screen lock, or import a recovery phrase instead.");
   window.localStorage.setItem(biometricCredentialKey, credentialId);
   return new Uint8Array(result);
 }
