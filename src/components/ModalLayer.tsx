@@ -98,21 +98,35 @@ export function ModalLayer({
       setCustomAmount("50");
       setRemainingAmount(null);
       setTxUsdRate(null);
-      Promise.all([getBrowserWalletAddress(), identityRepository.getTxExchangeRate(), hasPasskeyWallet(), getProjectOnChain(modal.project.chainProjectId ?? modal.project.id)]).then(async ([address, rate, passkey, onChainProject]) => {
-        setLocalWalletAvailable(Boolean(address));
-        setPasskeyWallet(passkey);
-        setTxUsdRate(rate.tx_usd_rate);
-        const remainingMicroTx = BigInt(onChainProject.goal_micro_tx) - BigInt(onChainProject.raised_micro_tx);
-        if (remainingMicroTx > 0n) {
-          const nextRemaining = Number(remainingMicroTx) / 1_000_000;
-          setRemainingAmount(nextRemaining);
-          setAmount(nextRemaining);
-          setCustomAmount(nextRemaining.toFixed(6));
-        } else {
-          setRemainingAmount(0);
+      Promise.allSettled([
+        getBrowserWalletAddress(),
+        identityRepository.getTxExchangeRate(),
+        hasPasskeyWallet(),
+        getProjectOnChain(modal.project.chainProjectId ?? modal.project.id),
+      ]).then(async ([addressResult, rateResult, passkeyResult, projectResult]) => {
+        if (addressResult.status === "fulfilled") {
+          setLocalWalletAvailable(Boolean(addressResult.value));
+          setBalance(addressResult.value ? await getCoreumBalance(addressResult.value) : null);
         }
-        setBalance(address ? await getCoreumBalance(address) : null);
-      }).catch((error) => setMessage(error instanceof Error ? error.message : "We could not load the current project state. Please try again."));
+        if (rateResult.status === "fulfilled") setTxUsdRate(rateResult.value.tx_usd_rate);
+        if (passkeyResult.status === "fulfilled") setPasskeyWallet(passkeyResult.value);
+        if (projectResult.status === "fulfilled") {
+          const onChainProject = projectResult.value;
+          const remainingMicroTx = BigInt(onChainProject.goal_micro_tx) - BigInt(onChainProject.raised_micro_tx);
+          if (remainingMicroTx > 0n) {
+            const nextRemaining = Number(remainingMicroTx) / 1_000_000;
+            setRemainingAmount(nextRemaining);
+            setAmount(nextRemaining);
+            setCustomAmount(nextRemaining.toFixed(6));
+          } else {
+            setRemainingAmount(0);
+          }
+        }
+        const failedResult = [rateResult, projectResult].find((result) => result.status === "rejected");
+        if (failedResult?.status === "rejected") {
+          setMessage(failedResult.reason instanceof Error ? failedResult.reason.message : "We could not load the current project state. Please try again.");
+        }
+      });
     }
     if (modal.type !== "account") return;
     Promise.all([

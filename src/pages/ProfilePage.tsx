@@ -57,7 +57,12 @@ export function ProfilePage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    void refresh();
+    const handleWalletChanged = () => void refresh();
+    window.addEventListener("soundfaith-wallet-changed", handleWalletChanged);
+    return () => window.removeEventListener("soundfaith-wallet-changed", handleWalletChanged);
+  }, []);
   useEffect(() => {
     if (!modal) return;
     const previousOverflow = document.body.style.overflow;
