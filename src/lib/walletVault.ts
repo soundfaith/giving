@@ -172,6 +172,18 @@ async function unwrapBiometricWalletSecret(envelope: PasswordEnvelope["biometric
   return new TextDecoder().decode(data);
 }
 
+export async function migrateActivePasswordWalletToBiometric(password: string) {
+  const vault = await readVault();
+  if (!vault?.serialization.startsWith("password-v1:")) return false;
+  const envelope = JSON.parse(vault.serialization.slice("password-v1:".length)) as PasswordEnvelope;
+  const walletSecret = await decryptWithPassword(envelope, password).catch(() => { throw new Error("Incorrect wallet password."); });
+  const biometric = await wrapWalletSecretForBiometric(walletSecret);
+  if (!biometric) throw new Error("Biometric wallet unlock is unavailable on this device.");
+  await writeVault({ ...vault, serialization: `password-v1:${JSON.stringify({ ...envelope, biometric })}` });
+  sessionWallet = null;
+  return true;
+}
+
 function openVaultDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(databaseName, 1);
