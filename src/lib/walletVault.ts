@@ -37,13 +37,25 @@ function randomSecret() {
   return bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
 }
 
+async function withPasskeyTimeout<T>(operation: Promise<T>) {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new DOMException("The passkey prompt did not open or finish within 20 seconds.", "TimeoutError")), 20000);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
+}
+
 async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverride?: string) {
   if (!window.isSecureContext) throw new Error("Passkey wallets require a secure HTTPS connection. Open the deployed app using its HTTPS Vercel URL.");
   if (!window.PublicKeyCredential || !navigator.credentials) throw new Error("This browser does not support passkey wallet unlock.");
   const storedCredentialId = credentialIdOverride ?? window.localStorage.getItem(biometricCredentialKey);
   let credentialId = storedCredentialId;
   if (create || !storedCredentialId) {
-    const credential = await navigator.credentials.create({
+    const credential = await withPasskeyTimeout(navigator.credentials.create({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)) as unknown as BufferSource,
         rp: { id: window.location.hostname, name: "SoundFaith" },
@@ -52,7 +64,7 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
         authenticatorSelection: { residentKey: "required", userVerification: "required" },
         timeout: 60000,
       },
-    });
+    }));
     if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
     credentialId = base64Url(new Uint8Array(credential.rawId));
   }
@@ -61,7 +73,7 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
     const base64 = credentialId.replace(/-/g, "+").replace(/_/g, "/");
     const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
     const id = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    const credential = await navigator.credentials.get({
+    const credential = await withPasskeyTimeout(navigator.credentials.get({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)) as unknown as BufferSource,
         allowCredentials: [{ id: id as unknown as BufferSource, type: "public-key" }],
@@ -69,7 +81,7 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
         extensions: { prf: { eval: { first: salt as unknown as BufferSource } } },
         timeout: 60000,
       },
-    });
+    }));
     if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
     window.localStorage.setItem(biometricCredentialKey, credentialId);
     const result = (credential.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf?.results?.first;
@@ -366,7 +378,19 @@ export async function getActiveBrowserWalletSecurity(): Promise<"passkey" | "pas
 export function isPasskeyFallbackError(error: unknown) {
   const name = error instanceof DOMException ? error.name : "";
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-  return message.includes("prf") || name === "NotSupportedError" || name === "SecurityError";
+  return message.includes("prf") || name === "NotSupportedError" || name === "SecurityError" || name === "TimeoutError";
+}
+
+export function describePasskeyError(error: unknown) {
+  const name = error instanceof DOMException ? error.name : "UnknownError";
+  const detail = error instanceof Error ? error.message : String(error);
+  const context = [
+    `error=${name}`,
+    `secure=${window.isSecureContext}`,
+    `origin=${window.location.origin}`,
+    `userAgent=${navigator.userAgent}`,
+  ].join(" | ");
+  return `${detail || "The passkey request did not complete."} (${context})`;
 }
 
 export async function unlockBrowserWallet() {

@@ -23,6 +23,7 @@ import {
   importBrowserWalletMnemonicWithPassword,
   clearWalletSession,
   getActiveBrowserWalletSecurity,
+  describePasskeyError,
   isPasskeyFallbackError,
 } from "../lib/walletVault";
 import { donateWithWallet, friendlyWalletError, getCoreumBalance, getProjectOnChain } from "../lib/wallet";
@@ -54,6 +55,7 @@ export function ModalLayer({
   const [email, setEmail] = useState("");
   const [emailSignInOpen, setEmailSignInOpen] = useState(false);
   const [message, setMessage] = useState("");
+  const [passkeyDiagnostic, setPasskeyDiagnostic] = useState("");
   const [transactionHash, setTransactionHash] = useState("");
   const [localWalletAvailable, setLocalWalletAvailable] = useState(false);
   const [walletSecurity, setWalletSecurity] = useState<"passkey" | "password" | null>(null);
@@ -283,6 +285,7 @@ export function ModalLayer({
   };
   const createWallet = async () => {
     setMessage("");
+    setPasskeyDiagnostic("");
     setLoading(true);
     try {
       const { address } = await createPasskeyBrowserWallet("TX wallet", ownerEmail ?? undefined);
@@ -297,6 +300,7 @@ export function ModalLayer({
     } catch (error) {
       const name = error instanceof DOMException ? error.name : "";
       const detail = error instanceof Error ? error.message : "";
+      setPasskeyDiagnostic(describePasskeyError(error));
       if (isPasskeyFallbackError(error)) {
         const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
         if (!password) {
@@ -325,6 +329,26 @@ export function ModalLayer({
               ? "Passkeys are blocked for this site. Open the HTTPS Vercel URL directly, rather than an embedded or private-browser page."
               : detail || "Unable to create wallet on this device.",
       );
+    } finally {
+      setLoading(false);
+    }
+  };
+  const createPasswordWallet = async () => {
+    setMessage("");
+    const password = window.prompt("Create a wallet password. It encrypts this wallet locally and is never sent to SoundFaith.");
+    if (!password) { setMessage("Wallet creation was cancelled."); return; }
+    const confirmation = window.prompt("Confirm your wallet password.");
+    if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
+    setLoading(true);
+    try {
+      const fallback = await createPasswordBrowserWallet("TX wallet", password, ownerEmail ?? undefined);
+      await identityRepository.syncProfile(fallback.address);
+      setProfile((current) => ({ ...(current ?? {}), wallet_address: fallback.address }));
+      setWalletExists(true);
+      window.dispatchEvent(new Event("soundfaith-wallet-changed"));
+      finishWalletSetup();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to create password wallet.");
     } finally {
       setLoading(false);
     }
@@ -529,6 +553,9 @@ export function ModalLayer({
                   {loading ? "Waiting for device..." : "Create passkey wallet"}
                   <Wallet size={15} />
                 </button>
+                <button className="button button-dark modal-action" onClick={() => void createPasswordWallet()} disabled={loading}>
+                  Use password wallet instead
+                </button>
                 <button
                   className="button button-dark modal-action"
                   onClick={() => setWalletSetupMode("choices")}
@@ -538,6 +565,7 @@ export function ModalLayer({
               </div>
             )}
             {message && <p className="modal-footnote">{message}</p>}
+            {passkeyDiagnostic && <pre className="modal-footnote passkey-diagnostic">{passkeyDiagnostic}</pre>}
           </div>
         )}
         {isWalletSetup && (
@@ -575,6 +603,12 @@ export function ModalLayer({
                 >
                   {loading ? "Waiting for device..." : "Create passkey wallet"} <Wallet size={15} />
                 </button>
+                <button className="button button-dark modal-action" onClick={() => void createPasswordWallet()} disabled={loading}>
+                  Use password wallet instead
+                </button>
+                <button className="button button-dark modal-action" onClick={() => void createPasswordWallet()} disabled={loading}>
+                  Use password wallet instead
+                </button>
               </>
             )}
             <label className="wallet-import">
@@ -603,6 +637,7 @@ export function ModalLayer({
               </div>
             )}
             {message && <p className="modal-footnote">{message}</p>}
+            {passkeyDiagnostic && <pre className="modal-footnote passkey-diagnostic">{passkeyDiagnostic}</pre>}
           </div>
         )}
         {modal.type === "project" && (
