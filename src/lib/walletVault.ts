@@ -20,7 +20,7 @@ type StoredVault = {
 };
 
 type PasskeyEnvelope = { credentialId: string; salt: string; iv: string; data: string; walletKind?: "mnemonic" | "private-key"; wallet: string };
-type PasswordEnvelope = { salt: string; iv: string; data: string; walletKind?: "mnemonic" | "private-key"; wallet: string };
+type PasswordEnvelope = { salt: string; iv: string; data: string; walletKind?: "mnemonic" | "private-key"; wallet: string; biometric?: { credentialId: string; salt: string; iv: string; data: string } };
 let sessionWallet: { id: string; wallet: DirectSecp256k1HdWallet | DirectSecp256k1Wallet; address: string } | null = null;
 
 function bytesToBase64(bytes: Uint8Array) {
@@ -153,6 +153,23 @@ async function unwrapWalletSecret(serialization: string) {
     if (!currentCredentialId || currentCredentialId === envelope.credentialId) throw error;
     return decrypt(currentCredentialId);
   }
+}
+
+async function wrapWalletSecretForBiometric(walletSecret: string) {
+  if (!hasBiometricUnlock()) return null;
+  const salt = crypto.getRandomValues(new Uint8Array(32));
+  const passkeyKey = await passkeySecret(salt, false);
+  const credentialId = window.localStorage.getItem(biometricCredentialKey) ?? "";
+  const wrapped = await wrapWalletSecret(walletSecret, passkeyKey, credentialId, salt);
+  return JSON.parse(wrapped.slice("passkey-v1:".length)) as { credentialId: string; salt: string; iv: string; data: string };
+}
+
+async function unwrapBiometricWalletSecret(envelope: PasswordEnvelope["biometric"]) {
+  if (!envelope) throw new Error("Biometric wallet unlock is not configured.");
+  const passkeyKey = await passkeySecret(base64ToBytes(envelope.salt), false, envelope.credentialId);
+  const key = await crypto.subtle.importKey("raw", passkeyKey as unknown as BufferSource, { name: "AES-GCM" }, false, ["decrypt"]);
+  const data = await crypto.subtle.decrypt({ name: "AES-GCM", iv: base64ToBytes(envelope.iv) as unknown as BufferSource }, key, base64ToBytes(envelope.data) as unknown as BufferSource);
+  return new TextDecoder().decode(data);
 }
 
 function openVaultDatabase() {
@@ -347,9 +364,10 @@ async function storePasskeyWallet(wallet: string, address: string, name: string,
 async function storePasswordWallet(wallet: string, address: string, name: string, password: string | undefined, ownerEmail: string | undefined, walletKind: PasswordEnvelope["walletKind"] = "mnemonic", walletSecret = randomSecret()) {
   if (!password?.trim()) throw new Error("A wallet password is required.");
   const encryptedSecret = await encryptWithPassword(walletSecret, password);
+  const biometric = await wrapWalletSecretForBiometric(walletSecret).catch(() => null);
   const storedWallet = walletKind === "private-key" ? await encryptWalletPayload(wallet, walletSecret) : wallet;
   const id = `wallet-${crypto.randomUUID()}`;
-  await writeVault({ id, name: name.trim() || "TX wallet", ownerEmail, address, serialization: `password-v1:${JSON.stringify({ ...encryptedSecret, wallet: storedWallet, walletKind })}`, createdAt: new Date().toISOString() });
+  await writeVault({ id, name: name.trim() || "TX wallet", ownerEmail, address, serialization: `password-v1:${JSON.stringify({ ...encryptedSecret, wallet: storedWallet, walletKind, ...(biometric ? { biometric } : {}) })}`, createdAt: new Date().toISOString() });
   setActiveWallet(id);
   return { id, address };
 }
@@ -407,20 +425,31 @@ export async function unlockBrowserWallet() {
       if (hasBiometricUnlock()) await verifyBiometricUnlock();
       return { wallet: sessionWallet.wallet, address: sessionWallet.address };
     }
-    const password = window.prompt("Enter your wallet password to unlock it on this device.");
-    if (!password) throw new Error("Wallet unlock was cancelled.");
     let walletSecret: string;
-    try {
-      walletSecret = await decryptWithPassword(envelope, password);
-    } catch {
-      throw new Error("Incorrect wallet password.");
+    if (envelope.biometric) {
+      try {
+        walletSecret = await unwrapBiometricWalletSecret(envelope.biometric);
+      } catch {
+        const password = window.prompt("Enter your wallet password to unlock it on this device.");
+        if (!password) throw new Error("Wallet unlock was cancelled.");
+        try { walletSecret = await decryptWithPassword(envelope, password); } catch { throw new Error("Incorrect wallet password."); }
+      }
+    } else {
+      const password = window.prompt("Enter your wallet password to unlock it on this device.");
+      if (!password) throw new Error("Wallet unlock was cancelled.");
+      try { walletSecret = await decryptWithPassword(envelope, password); } catch { throw new Error("Incorrect wallet password."); }
+    }
+    if (!envelope.biometric && hasBiometricUnlock()) {
+      const biometric = await wrapWalletSecretForBiometric(walletSecret).catch(() => null);
+      if (biometric) {
+        await writeVault({ ...vault, serialization: `password-v1:${JSON.stringify({ ...envelope, biometric })}` });
+      }
     }
     const wallet = envelope.walletKind === "private-key"
       ? await DirectSecp256k1Wallet.fromKey(fromHex(await decryptWalletPayload(envelope.wallet, walletSecret)), prefix)
       : await DirectSecp256k1HdWallet.deserialize(envelope.wallet, walletSecret);
     const [{ address }] = await wallet.getAccounts();
     if (address !== vault.address) throw new Error("Wallet integrity check failed. Restore the wallet from its recovery phrase.");
-    if (hasBiometricUnlock()) await verifyBiometricUnlock();
     sessionWallet = { id: vault.id, wallet, address: vault.address };
     return { wallet, address: vault.address };
   }
