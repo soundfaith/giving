@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowUpRight, Bell, Check, Copy, Download, Droplets, Eye, Mo
 import { getViewerRole } from "../lib/admin";
 import { identityRepository, type Notification } from "../lib/supabase";
 import { getCoreumBalances } from "../lib/wallet";
-import { clearWalletSession, createPasskeyBrowserWallet, createPasswordBrowserWallet, describePasskeyError, exportBrowserWallet, getBrowserWalletAddress, getBrowserWallets, hasBiometricUnlock, hasPasskeyWallet, importBrowserWallet, importBrowserWalletMnemonic, importBrowserWalletMnemonicWithPassword, importBrowserWalletPrivateKey, isPasskeyFallbackError, registerBiometricUnlock, removeBrowserWallet, revealBrowserWalletMnemonic, switchBrowserWallet } from "../lib/walletVault";
+import { clearWalletSession, createPasskeyBrowserWallet, createPasswordBrowserWallet, exportBrowserWallet, getBrowserWalletAddress, getBrowserWallets, hasBiometricUnlock, hasPasskeyWallet, importBrowserWallet, importBrowserWalletMnemonic, importBrowserWalletMnemonicWithPassword, importBrowserWalletPrivateKey, isPasskeyFallbackError, registerBiometricUnlock, removeBrowserWallet, revealBrowserWalletMnemonic, switchBrowserWallet } from "../lib/walletVault";
 
 const chainExplorerBase = import.meta.env.VITE_COREUM_NETWORK === "mainnet" ? "https://explorer.coreum.com" : "https://explorer.testnet-1.coreum.dev";
 const txFaucetUrl = "https://docs.tx.org/docs/next/tools-and-ecosystem/faucet#faucet";
@@ -33,7 +33,10 @@ export function ProfilePage() {
   const [backupFile, setBackupFile] = useState<File | null>(null);
   const [modal, setModal] = useState<ProfileModal>(null);
   const [message, setMessage] = useState("");
-  const [passkeyDiagnostic, setPasskeyDiagnostic] = useState("");
+  const [passwordWalletOpen, setPasswordWalletOpen] = useState(false);
+  const [walletPassword, setWalletPassword] = useState("");
+  const [walletPasswordConfirmation, setWalletPasswordConfirmation] = useState("");
+  const [passwordFallbackMnemonic, setPasswordFallbackMnemonic] = useState<string | null>(null);
   const [faucetMessage, setFaucetMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState<Theme>(() => window.localStorage.getItem("soundfaith-theme") === "dark" ? "dark" : "light");
@@ -82,7 +85,6 @@ export function ProfilePage() {
   const revealMnemonic = async () => { if (!activeWallet) { setMessage("Create or select a wallet first."); return; } try { setMnemonic(await revealBrowserWalletMnemonic()); setMnemonicRevealed(false); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to unlock mnemonic"); } };
   const switchWallet = async (id: string) => { try { const next = await switchBrowserWallet(id); await identityRepository.syncProfile(next.address); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to switch wallet"); } };
   const createWallet = async () => {
-    setPasskeyDiagnostic("");
     try {
       const created = await createPasskeyBrowserWallet(walletName, profile?.email ?? undefined);
       await identityRepository.syncProfile(created.address);
@@ -90,16 +92,29 @@ export function ProfilePage() {
       setWalletName(""); closeModal(); await refresh();
     } catch (error) {
       const detail = error instanceof Error ? error.message : "";
-      setPasskeyDiagnostic(describePasskeyError(error));
       if (!isPasskeyFallbackError(error)) { setMessage(detail || "Unable to create wallet"); return; }
-      const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
-      if (!password) { setMessage("Wallet creation was cancelled."); return; }
-      const confirmation = window.prompt("Confirm your wallet password.");
-      if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
-      const created = await createPasswordBrowserWallet(walletName, password, profile?.email ?? undefined);
+      setMessage("Passkey unavailable. Use a password wallet instead.");
+      setPasswordFallbackMnemonic(null);
+      setPasswordWalletOpen(true);
+      return;
+    }
+  };
+  const submitPasswordWallet = async () => {
+    if (!walletPassword) { setMessage("Enter a wallet password."); return; }
+    if (walletPassword !== walletPasswordConfirmation) { setMessage("The wallet passwords did not match."); return; }
+    try {
+      const created = passwordFallbackMnemonic
+        ? await importBrowserWalletMnemonicWithPassword(passwordFallbackMnemonic, walletPassword, null, walletName || "Recovered wallet", profile?.email ?? undefined)
+        : await createPasswordBrowserWallet(walletName, walletPassword, profile?.email ?? undefined);
       await identityRepository.syncProfile(created.address);
       window.dispatchEvent(new Event("soundfaith-wallet-changed"));
+      setPasswordWalletOpen(false);
+      setWalletPassword("");
+      setWalletPasswordConfirmation("");
+      setPasswordFallbackMnemonic(null);
       setWalletName(""); closeModal(); await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to create password wallet");
     }
   };
   const restoreFromMnemonic = async () => { try { const restored = await importBrowserWalletMnemonic(restoreMnemonic, null, walletName || "Recovered wallet", profile?.email ?? undefined); await identityRepository.syncProfile(restored.address); window.dispatchEvent(new Event("soundfaith-wallet-changed")); setRestoreMnemonic(""); setWalletName(""); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to restore wallet"); } };
@@ -108,14 +123,9 @@ export function ProfilePage() {
     catch (error) {
       const detail = error instanceof Error ? error.message : "";
       if (!isPasskeyFallbackError(error)) { setMessage(detail || "Unable to import mnemonic"); return; }
-      const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
-      if (!password) { setMessage("Wallet import was cancelled."); return; }
-      const confirmation = window.prompt("Confirm your wallet password.");
-      if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
-      const restored = await importBrowserWalletMnemonicWithPassword(mnemonicWords.join(" "), password, null, walletName || "Recovered wallet", profile?.email ?? undefined);
-      await identityRepository.syncProfile(restored.address);
-      window.dispatchEvent(new Event("soundfaith-wallet-changed"));
-      closeModal(); await refresh();
+      setMessage("Passkey unavailable. Use a password wallet instead.");
+      setPasswordFallbackMnemonic(mnemonicWords.join(" "));
+      setPasswordWalletOpen(true);
     }
   };
   const importPrivateKey = async () => { try { const imported = await importBrowserWalletPrivateKey(privateKey, walletName || "Imported wallet", profile?.email ?? undefined); await identityRepository.syncProfile(imported.address); window.dispatchEvent(new Event("soundfaith-wallet-changed")); closeModal(); await refresh(); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to import private key"); } };
@@ -149,7 +159,6 @@ export function ProfilePage() {
   return <main className="profile-page section-wrap">
     <div className="profile-page-heading"><div><p className="eyebrow">Your SoundFaith identity</p><h1>Your<br /><em>profile.</em></h1></div><button className="icon-button" onClick={() => void refresh()} aria-label="Refresh profile" title="Refresh profile"><RefreshCw size={16} /></button></div>
     {message && <p className="modal-footnote profile-message">{message}</p>}
-    {passkeyDiagnostic && <pre className="modal-footnote passkey-diagnostic profile-message">{passkeyDiagnostic}</pre>}
     <section className="profile-section-card profile-notification-section"><div className="profile-section-title"><div><p className="eyebrow">Inbox</p><h2>{unreadNotifications.length ? "You have an update." : "Stay in the loop."}</h2></div><Bell size={20} /></div>{unreadNotifications[0] ? <article className="notification-card profile-notification-card" onClick={() => void markNotificationRead(unreadNotifications[0])}><div className="notification-card-icon"><Bell size={18} /></div><div className="notification-card-body"><strong>{unreadNotifications[0].title}</strong><span>{new Date(unreadNotifications[0].created_at).toLocaleString()}</span><p>{unreadNotifications[0].message}</p></div><div className="notification-card-meta"><span>Unread</span></div></article> : <p className="profile-empty">You are all caught up.</p>}<a className="button button-outline" href="#/inbox">Open inbox <ArrowUpRight size={15} /></a></section>
     <section className="profile-section-card profile-identity-card"><div className="profile-section-title"><div><p className="eyebrow">Account</p><h2>Login details</h2></div><button className="icon-button" onClick={() => setModal("name")} aria-label="Rename user" title="Rename user"><Pencil size={15} /></button></div><div className="profile-details-grid"><div><span>User name</span><strong>{profile?.handle ?? (loading ? "Loading..." : "Not assigned")}</strong></div>{role && <div><span>Role</span><strong><b className="role-badge">{role}</b></strong></div>}<div><span>Date joined</span><strong>{profile?.created_at ? new Date(profile.created_at).toLocaleDateString() : loading ? "Loading..." : "Not available"}</strong></div><div><span>Email address</span><strong>{profile?.email ?? (loading ? "Loading..." : "Not available")}</strong></div></div><p className="profile-privacy-note">SoundFaith does not store personal user data. The only account information retained for social login is your email address.</p></section>
     <section className="profile-section-card"><div className="profile-section-title"><div><p className="eyebrow">On this device</p><h2>Wallet details</h2></div><Wallet size={20} /></div><div className="profile-details-grid wallet-details-grid"><div><span>Wallet name</span><strong>{activeWallet?.name ?? "No wallet selected"}</strong></div><div><span>Address</span><strong className="account-wallet-address">{activeWallet?.address ?? "Not configured"}</strong></div><div><span>TX balance</span><strong>{balance === null ? (loading ? "Loading..." : "--") : `${balance.toFixed(6)} TX`}</strong></div></div><div className="profile-button-row">{wallets.length > 1 && <button className="button button-coral" onClick={() => setModal("wallets")}><Wallet size={15} /> Select wallet</button>}<button className="button button-dark" onClick={() => setModal("add-wallet")}><Wallet size={15} /> Add or create wallet</button>{activeWallet && <><button className="button button-outline" onClick={() => void exportWallet()}><Download size={15} /> Export wallet</button><button className="button button-outline" onClick={() => setModal("mnemonic")}><Eye size={15} /> Show mnemonic</button>{isTestnet && <button className="button button-outline" onClick={() => void requestTestnetFunds()}><Droplets size={15} /> Request testnet funds</button>}</>}</div>{faucetMessage && <p className="profile-device-note faucet-message">{faucetMessage}</p>}<p className="profile-device-note">Wallet keys stay protected by your passkey on this device.</p></section>
@@ -159,8 +168,8 @@ export function ProfilePage() {
     {modal === "wallets" && <ProfileDialog title="Select wallet" close={closeModal}><div className="wallet-option-list">{wallets.map((wallet) => <div className={wallet.address === localWalletAddress ? "wallet-option-row active" : "wallet-option-row"} key={wallet.id}><button className="wallet-option" onClick={() => void switchWallet(wallet.id)}><strong>{wallet.name}</strong><small>{wallet.address}</small></button><button type="button" className="wallet-remove-button" onClick={() => void removeWallet(wallet.id)} aria-label={`Remove ${wallet.name}`} title="Remove wallet"><X size={15} /></button></div>)}</div>{!wallets.length && <p className="profile-empty">No passkey wallets for this account on this device.</p>}<button className="button button-dark modal-action" onClick={() => { closeModal(); setModal("add-wallet"); }}>Add another wallet <Wallet size={15} /></button></ProfileDialog>}
     {modal === "add-wallet" && <ProfileDialog className={`wallet-add-dialog ${walletAddMode === "mnemonic" ? "wallet-mnemonic-dialog" : ""}`} title={walletAddMode === "choices" ? "Add or create wallet" : walletAddMode === "create" ? "Create new wallet" : walletAddMode === "mnemonic" ? "Import mnemonic" : walletAddMode === "private-key" ? "Import private key" : "Upload encrypted backup"} close={closeModal}><div className="wallet-flow">
       {walletAddMode === "choices" && <><p className="modal-copy">Choose how you want to add a TX blockchain wallet to this device.</p><div className="wallet-flow-choices"><button className="button button-coral" onClick={() => setWalletAddMode("create")}><Wallet size={15} /> Create new wallet</button><button className="button button-dark" onClick={() => setWalletAddMode("mnemonic")}>Import using mnemonic</button><button className="button button-dark" onClick={() => setWalletAddMode("private-key")}>Import using private key</button><button className="button button-outline" onClick={() => setWalletAddMode("backup")}>Upload encrypted backup</button></div></>}
-      {walletAddMode === "create" && <><p className="modal-copy">A passkey-protected TX wallet will be created on this device. Your device passkey unlocks it locally. SoundFaith never receives your wallet keys or recovery phrase, so back up the mnemonic separately.</p><input className="profile-dialog-input" placeholder="Wallet name" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void createWallet()}>Create passkey wallet <Wallet size={15} /></button></>}
-      {walletAddMode === "mnemonic" && <><div className="wallet-field-label">Number of words<div className="mnemonic-length-pills">{[12, 15, 18, 21, 24].map((length) => <button type="button" key={length} className={mnemonicLength === length ? "mnemonic-length-pill active" : "mnemonic-length-pill"} onClick={() => updateMnemonicLength(length)}>{length}</button>)}</div></div><div className="mnemonic-input-grid">{mnemonicWords.map((word, index) => <input className="profile-dialog-input" key={index} value={word} onPaste={index === 0 ? pasteMnemonic : undefined} onChange={(event) => setMnemonicWords((current) => current.map((entry, wordIndex) => wordIndex === index ? event.target.value : entry))} placeholder={`${index + 1}`} aria-label={`Mnemonic word ${index + 1}`} />)}</div><input className="profile-dialog-input" placeholder="Wallet name (optional)" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void createFromMnemonic()} disabled={mnemonicWords.some((word) => !word.trim())}>Import with passkey <ArrowUpRight size={15} /></button></>}
+      {walletAddMode === "create" && <><p className="modal-copy">A passkey-protected TX wallet will be created on this device. SoundFaith never receives your wallet keys or recovery phrase.</p><input className="profile-dialog-input" placeholder="Wallet name" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void createWallet()}>Create passkey wallet <Wallet size={15} /></button><button className="button button-dark modal-action" onClick={() => setPasswordWalletOpen(true)}>Use password wallet instead</button>{passwordWalletOpen && <div className="wallet-password-panel"><p className="eyebrow">Use a password instead</p><p className="modal-copy">Your password encrypts this wallet locally and is never sent to SoundFaith.</p><input className="profile-dialog-input" type="password" placeholder="Wallet password" value={walletPassword} onChange={(event) => setWalletPassword(event.target.value)} autoComplete="new-password" /><input className="profile-dialog-input" type="password" placeholder="Confirm password" value={walletPasswordConfirmation} onChange={(event) => setWalletPasswordConfirmation(event.target.value)} autoComplete="new-password" /><button className="button button-coral modal-action" onClick={() => void submitPasswordWallet()}>Create password wallet <Wallet size={15} /></button></div>}</>}
+      {walletAddMode === "mnemonic" && <><div className="wallet-field-label">Number of words<div className="mnemonic-length-pills">{[12, 15, 18, 21, 24].map((length) => <button type="button" key={length} className={mnemonicLength === length ? "mnemonic-length-pill active" : "mnemonic-length-pill"} onClick={() => updateMnemonicLength(length)}>{length}</button>)}</div></div><div className="mnemonic-input-grid">{mnemonicWords.map((word, index) => <input className="profile-dialog-input" key={index} value={word} onPaste={index === 0 ? pasteMnemonic : undefined} onChange={(event) => setMnemonicWords((current) => current.map((entry, wordIndex) => wordIndex === index ? event.target.value : entry))} placeholder={`${index + 1}`} aria-label={`Mnemonic word ${index + 1}`} />)}</div><input className="profile-dialog-input" placeholder="Wallet name (optional)" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void createFromMnemonic()} disabled={mnemonicWords.some((word) => !word.trim())}>Import with passkey <ArrowUpRight size={15} /></button>{passwordWalletOpen && <div className="wallet-password-panel"><p className="eyebrow">Use a password instead</p><input className="profile-dialog-input" type="password" placeholder="Wallet password" value={walletPassword} onChange={(event) => setWalletPassword(event.target.value)} autoComplete="new-password" /><input className="profile-dialog-input" type="password" placeholder="Confirm password" value={walletPasswordConfirmation} onChange={(event) => setWalletPasswordConfirmation(event.target.value)} autoComplete="new-password" /><button className="button button-coral modal-action" onClick={() => void submitPasswordWallet()}>Import password wallet <Wallet size={15} /></button></div>}</>}
       {walletAddMode === "private-key" && <><p className="modal-copy">Your private key will be protected by your passkey and stored only on this device.</p><input className="profile-dialog-textarea" value={privateKey} onChange={(event) => setPrivateKey(event.target.value)} placeholder="64-character hexadecimal private key" /><input className="profile-dialog-input" placeholder="Wallet name (optional)" value={walletName} onChange={(event) => setWalletName(event.target.value)} /><button className="button button-coral modal-action" onClick={() => void importPrivateKey()} disabled={!privateKey.trim()}>Import with passkey <ArrowUpRight size={15} /></button></>}
       {walletAddMode === "backup" && <><p className="modal-copy">Upload a passkey-protected SoundFaith wallet backup from this device.</p><label className="wallet-upload-card"><Download size={20} /><strong>{backupFile ? backupFile.name : "Choose passkey wallet backup"}</strong><span>{backupFile ? "Backup selected. Import it to continue." : "Upload a passkey-protected wallet file."}</span><input type="file" accept="application/json,.json" onChange={selectBackup} /></label><button className="button button-coral modal-action" onClick={() => void importBackup()} disabled={!backupFile}>Import backup <ArrowUpRight size={15} /></button></>}
       {walletAddMode !== "choices" && <button className="wallet-flow-back" onClick={() => setWalletAddMode("choices")}><ArrowLeft size={15} /> Back to wallet options</button>}

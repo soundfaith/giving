@@ -23,7 +23,6 @@ import {
   importBrowserWalletMnemonicWithPassword,
   clearWalletSession,
   getActiveBrowserWalletSecurity,
-  describePasskeyError,
   isPasskeyFallbackError,
 } from "../lib/walletVault";
 import { donateWithWallet, friendlyWalletError, getCoreumBalance, getProjectOnChain } from "../lib/wallet";
@@ -55,7 +54,10 @@ export function ModalLayer({
   const [email, setEmail] = useState("");
   const [emailSignInOpen, setEmailSignInOpen] = useState(false);
   const [message, setMessage] = useState("");
-  const [passkeyDiagnostic, setPasskeyDiagnostic] = useState("");
+  const [passwordWalletOpen, setPasswordWalletOpen] = useState(false);
+  const [walletPassword, setWalletPassword] = useState("");
+  const [walletPasswordConfirmation, setWalletPasswordConfirmation] = useState("");
+  const [passwordFallbackMnemonic, setPasswordFallbackMnemonic] = useState<string | null>(null);
   const [transactionHash, setTransactionHash] = useState("");
   const [localWalletAvailable, setLocalWalletAvailable] = useState(false);
   const [walletSecurity, setWalletSecurity] = useState<"passkey" | "password" | null>(null);
@@ -285,7 +287,6 @@ export function ModalLayer({
   };
   const createWallet = async () => {
     setMessage("");
-    setPasskeyDiagnostic("");
     setLoading(true);
     try {
       const { address } = await createPasskeyBrowserWallet("TX wallet", ownerEmail ?? undefined);
@@ -300,24 +301,10 @@ export function ModalLayer({
     } catch (error) {
       const name = error instanceof DOMException ? error.name : "";
       const detail = error instanceof Error ? error.message : "";
-      setPasskeyDiagnostic(describePasskeyError(error));
       if (isPasskeyFallbackError(error)) {
-        const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
-        if (!password) {
-          setMessage("Wallet creation was cancelled.");
-          return;
-        }
-        const confirmation = window.prompt("Confirm your wallet password.");
-        if (password !== confirmation) {
-          setMessage("The wallet passwords did not match.");
-          return;
-        }
-        const fallback = await createPasswordBrowserWallet("TX wallet", password, ownerEmail ?? undefined);
-        await identityRepository.syncProfile(fallback.address);
-        setProfile((current) => ({ ...(current ?? {}), wallet_address: fallback.address }));
-        setWalletExists(true);
-        window.dispatchEvent(new Event("soundfaith-wallet-changed"));
-        finishWalletSetup();
+        setMessage("Passkey unavailable. Use a password wallet instead.");
+        setPasswordFallbackMnemonic(null);
+        setPasswordWalletOpen(true);
         return;
       }
       setMessage(
@@ -335,17 +322,24 @@ export function ModalLayer({
   };
   const createPasswordWallet = async () => {
     setMessage("");
-    const password = window.prompt("Create a wallet password. It encrypts this wallet locally and is never sent to SoundFaith.");
-    if (!password) { setMessage("Wallet creation was cancelled."); return; }
-    const confirmation = window.prompt("Confirm your wallet password.");
-    if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
+    setPasswordWalletOpen(true);
+  };
+  const submitPasswordWallet = async () => {
+    if (!walletPassword) { setMessage("Enter a wallet password."); return; }
+    if (walletPassword !== walletPasswordConfirmation) { setMessage("The wallet passwords did not match."); return; }
     setLoading(true);
     try {
-      const fallback = await createPasswordBrowserWallet("TX wallet", password, ownerEmail ?? undefined);
+      const fallback = passwordFallbackMnemonic
+        ? await importBrowserWalletMnemonicWithPassword(passwordFallbackMnemonic, walletPassword, null, "Recovered wallet", ownerEmail ?? undefined)
+        : await createPasswordBrowserWallet("TX wallet", walletPassword, ownerEmail ?? undefined);
       await identityRepository.syncProfile(fallback.address);
       setProfile((current) => ({ ...(current ?? {}), wallet_address: fallback.address }));
       setWalletExists(true);
       window.dispatchEvent(new Event("soundfaith-wallet-changed"));
+      setPasswordWalletOpen(false);
+      setWalletPassword("");
+      setWalletPasswordConfirmation("");
+      setPasswordFallbackMnemonic(null);
       finishWalletSetup();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to create password wallet.");
@@ -399,17 +393,9 @@ export function ModalLayer({
     } catch (error) {
       const detail = error instanceof Error ? error.message : "";
       if (isPasskeyFallbackError(error)) {
-        const password = window.prompt("This device cannot use biometric wallet storage. Create a wallet password; you will only need it again after this browser session is cleared.");
-        if (!password) { setMessage("Wallet import was cancelled."); return; }
-        const confirmation = window.prompt("Confirm your wallet password.");
-        if (password !== confirmation) { setMessage("The wallet passwords did not match."); return; }
-        const fallback = await importBrowserWalletMnemonicWithPassword(mnemonic, password, null, "Recovered wallet", ownerEmail ?? undefined);
-        await identityRepository.syncProfile(fallback.address);
-        setProfile((current) => ({ ...(current ?? {}), wallet_address: fallback.address }));
-        setWalletExists(true);
-        window.dispatchEvent(new Event("soundfaith-wallet-changed"));
-        setMnemonic("");
-        finishWalletSetup();
+        setMessage("Passkey unavailable. Use a password wallet instead.");
+        setPasswordFallbackMnemonic(mnemonic);
+        setPasswordWalletOpen(true);
         return;
       }
       setMessage(
@@ -565,7 +551,7 @@ export function ModalLayer({
               </div>
             )}
             {message && <p className="modal-footnote">{message}</p>}
-            {passkeyDiagnostic && <pre className="modal-footnote passkey-diagnostic">{passkeyDiagnostic}</pre>}
+            {passwordWalletOpen && <div className="wallet-password-panel"><p className="eyebrow">Use a password instead</p><p className="modal-copy">Your password encrypts this wallet locally and is never sent to SoundFaith.</p><input className="profile-dialog-input" type="password" placeholder="Wallet password" value={walletPassword} onChange={(event) => setWalletPassword(event.target.value)} autoComplete="new-password" /><input className="profile-dialog-input" type="password" placeholder="Confirm password" value={walletPasswordConfirmation} onChange={(event) => setWalletPasswordConfirmation(event.target.value)} autoComplete="new-password" /><button className="button button-coral modal-action" onClick={() => void submitPasswordWallet()} disabled={loading}>Create password wallet <Wallet size={15} /></button></div>}
           </div>
         )}
         {isWalletSetup && (
@@ -637,7 +623,7 @@ export function ModalLayer({
               </div>
             )}
             {message && <p className="modal-footnote">{message}</p>}
-            {passkeyDiagnostic && <pre className="modal-footnote passkey-diagnostic">{passkeyDiagnostic}</pre>}
+            {passwordWalletOpen && <div className="wallet-password-panel"><p className="eyebrow">Use a password instead</p><p className="modal-copy">Your password encrypts this wallet locally and is never sent to SoundFaith.</p><input className="profile-dialog-input" type="password" placeholder="Wallet password" value={walletPassword} onChange={(event) => setWalletPassword(event.target.value)} autoComplete="new-password" /><input className="profile-dialog-input" type="password" placeholder="Confirm password" value={walletPasswordConfirmation} onChange={(event) => setWalletPasswordConfirmation(event.target.value)} autoComplete="new-password" /><button className="button button-coral modal-action" onClick={() => void submitPasswordWallet()} disabled={loading}>Create password wallet <Wallet size={15} /></button></div>}
           </div>
         )}
         {modal.type === "project" && (

@@ -37,10 +37,13 @@ function randomSecret() {
   return bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-async function withPasskeyTimeout<T>(operation: Promise<T>) {
+async function withPasskeyTimeout<T>(operation: Promise<T>, controller: AbortController) {
   let timeoutId: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = window.setTimeout(() => reject(new DOMException("The passkey prompt did not open or finish within 20 seconds.", "TimeoutError")), 20000);
+    timeoutId = window.setTimeout(() => {
+      controller.abort();
+      reject(new DOMException("The passkey request timed out.", "TimeoutError"));
+    }, 5000);
   });
   try {
     return await Promise.race([operation, timeout]);
@@ -55,6 +58,7 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
   const storedCredentialId = credentialIdOverride ?? window.localStorage.getItem(biometricCredentialKey);
   let credentialId = storedCredentialId;
   if (create || !storedCredentialId) {
+    const controller = new AbortController();
     const credential = await withPasskeyTimeout(navigator.credentials.create({
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)) as unknown as BufferSource,
@@ -64,12 +68,14 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
         authenticatorSelection: { residentKey: "required", userVerification: "required" },
         timeout: 60000,
       },
-    }));
+      signal: controller.signal,
+    }), controller);
     if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
     credentialId = base64Url(new Uint8Array(credential.rawId));
   }
   if (!credentialId) throw new Error("Passkey registration did not return a credential.");
   {
+    const controller = new AbortController();
     const base64 = credentialId.replace(/-/g, "+").replace(/_/g, "/");
     const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
     const id = Uint8Array.from(binary, (character) => character.charCodeAt(0));
@@ -81,11 +87,12 @@ async function passkeySecret(salt: Uint8Array, create = false, credentialIdOverr
         extensions: { prf: { eval: { first: salt as unknown as BufferSource } } },
         timeout: 60000,
       },
-    }));
+      signal: controller.signal,
+    }), controller);
     if (!(credential instanceof PublicKeyCredential)) throw new Error("Passkey verification was not completed.");
     window.localStorage.setItem(biometricCredentialKey, credentialId);
     const result = (credential.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }).prf?.results?.first;
-    if (!result) throw new Error("This device completed passkey verification, but its passkey provider does not support secure wallet storage (PRF). Try Chrome on Android, update the browser and screen lock, or import a recovery phrase instead.");
+    if (!result) throw new Error("Passkey wallet storage is unavailable on this device.");
     return new Uint8Array(result);
   }
 }
@@ -379,18 +386,6 @@ export function isPasskeyFallbackError(error: unknown) {
   const name = error instanceof DOMException ? error.name : "";
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   return message.includes("prf") || name === "NotSupportedError" || name === "SecurityError" || name === "TimeoutError";
-}
-
-export function describePasskeyError(error: unknown) {
-  const name = error instanceof DOMException ? error.name : "UnknownError";
-  const detail = error instanceof Error ? error.message : String(error);
-  const context = [
-    `error=${name}`,
-    `secure=${window.isSecureContext}`,
-    `origin=${window.location.origin}`,
-    `userAgent=${navigator.userAgent}`,
-  ].join(" | ");
-  return `${detail || "The passkey request did not complete."} (${context})`;
 }
 
 export async function unlockBrowserWallet() {
