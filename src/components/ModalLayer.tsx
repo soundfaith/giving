@@ -23,6 +23,9 @@ import {
   importBrowserWalletMnemonicWithPassword,
   clearWalletSession,
   getActiveBrowserWalletSecurity,
+  BiometricUnlockRequiredError,
+  PasswordUnlockRequiredError,
+  unlockBrowserWalletWithPassword,
   isPasskeyFallbackError,
 } from "../lib/walletVault";
 import { donateWithWallet, friendlyWalletError, getCoreumBalance, getProjectOnChain } from "../lib/wallet";
@@ -58,6 +61,8 @@ export function ModalLayer({
   const [walletPassword, setWalletPassword] = useState("");
   const [walletPasswordConfirmation, setWalletPasswordConfirmation] = useState("");
   const [passwordFallbackMnemonic, setPasswordFallbackMnemonic] = useState<string | null>(null);
+  const [walletUnlockOpen, setWalletUnlockOpen] = useState(false);
+  const [walletUnlockPassword, setWalletUnlockPassword] = useState("");
   const [transactionHash, setTransactionHash] = useState("");
   const [localWalletAvailable, setLocalWalletAvailable] = useState(false);
   const [walletSecurity, setWalletSecurity] = useState<"passkey" | "password" | null>(null);
@@ -176,6 +181,11 @@ export function ModalLayer({
       );
       await identityRepository.connect(provider, email);
     } catch (error) {
+      if (error instanceof BiometricUnlockRequiredError || error instanceof PasswordUnlockRequiredError) {
+        setMessage(error instanceof BiometricUnlockRequiredError ? "Biometric unlock did not complete. Use password recovery once to repair this wallet." : "Use password recovery to unlock this wallet.");
+        setWalletUnlockOpen(true);
+        return;
+      }
       setMessage(
         error instanceof Error ? error.message : "Unable to start sign-in",
       );
@@ -215,6 +225,20 @@ export function ModalLayer({
     }
   };
   const requestDonationUnlock = () => void donate();
+  const unlockWithPassword = async () => {
+    if (!walletUnlockPassword) { setMessage("Enter your wallet password."); return; }
+    setLoading(true);
+    try {
+      await unlockBrowserWalletWithPassword(walletUnlockPassword);
+      setWalletUnlockOpen(false);
+      setWalletUnlockPassword("");
+      await donate();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to unlock wallet.");
+    } finally {
+      setLoading(false);
+    }
+  };
   const finishWalletSetup = () => {
     if (modal.type === "wallet-setup" && modal.project) onDonate(modal.project);
     else close();
@@ -588,9 +612,6 @@ export function ModalLayer({
                   disabled={loading}
                 >
                   {loading ? "Waiting for device..." : "Create passkey wallet"} <Wallet size={15} />
-                </button>
-                <button className="button button-dark modal-action" onClick={() => void createPasswordWallet()} disabled={loading}>
-                  Use password wallet instead
                 </button>
                 <button className="button button-dark modal-action" onClick={() => void createPasswordWallet()} disabled={loading}>
                   Use password wallet instead
@@ -996,6 +1017,7 @@ export function ModalLayer({
                 <ArrowUpRight size={16} />
               </button>
               {message && <p className="modal-footnote">{message}</p>}
+              {walletUnlockOpen && <div className="wallet-password-panel"><p className="eyebrow">Password recovery</p><p className="modal-copy">Use your password once to repair biometric unlock for this wallet.</p><input className="profile-dialog-input" type="password" placeholder="Wallet password" value={walletUnlockPassword} onChange={(event) => setWalletUnlockPassword(event.target.value)} autoComplete="current-password" /><button className="button button-coral modal-action" onClick={() => void unlockWithPassword()} disabled={loading}>Unlock and continue <ArrowUpRight size={15} /></button></div>}
             </>
           ))}
       </section>
