@@ -1,0 +1,11 @@
+{
+  "projects": [
+    {
+      "id": "harbor",
+      "goal_micro_tx": "24000000000",
+      "status": "active",
+      "metadata_token_id": "",
+      "beneficiary": "REPLACE_WITH_BENEFICIARY_COREUM_ADDRESS"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+contracts/donation/target/
+contracts/donation/artifacts/
+*.wasm
+supabase/.temp/

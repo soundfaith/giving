@@ -1,0 +1,350 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bell,
+  Heart,
+  Home,
+  Menu,
+  Plus,
+  Search,
+  UserRound,
+  Wallet,
+  X,
+} from "lucide-react";
+import { Brand } from "./components/Brand";
+import { ThemeToggle } from "./components/Brand";
+import { ModalLayer, type Modal } from "./components/ModalLayer";
+import { Toast, type Notice } from "./components/Toast";
+import { HomePage } from "./pages/HomePage";
+import { AllProjectsPage } from "./pages/AllProjectsPage";
+import { ProjectPage } from "./pages/ProjectPage";
+import { ChurchPage } from "./pages/ChurchPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { ReviewPage } from "./pages/ReviewPage";
+import { AdminPage } from "./pages/AdminPage";
+import { InboxPage } from "./pages/InboxPage";
+import { TermsPage } from "./pages/TermsPage";
+import { projects as fallbackProjects } from "./lib/projects";
+import {
+  projectRepository,
+  identityRepository,
+  supabase,
+  type Project,
+} from "./lib/supabase";
+import {
+  activateBrowserWalletForAddress,
+  claimBrowserWalletForEmail,
+  getActiveBrowserWallet,
+  getBrowserWalletAddress,
+} from "./lib/walletVault";
+
+function readRoute() {
+  const path = window.location.hash.replace(/^#\/?/, "").split("?")[0];
+  if (path.startsWith("projects/"))
+    return { name: "project" as const, id: path.slice("projects/".length) };
+  if (path === "all-projects") return { name: "all-projects" as const };
+  if (path === "churches") return { name: "churches" as const };
+  if (path === "terms") return { name: "terms" as const };
+  if (path === "profile") return { name: "profile" as const };
+  if (path === "review") return { name: "review" as const };
+  if (path === "admin") return { name: "admin" as const };
+  if (path === "notifications") return { name: "notifications" as const };
+  if (path === "activities") return { name: "activities" as const };
+  if (path === "inbox") return { name: "inbox" as const };
+  return { name: "home" as const };
+}
+
+export default function App() {
+  const [route, setRoute] = useState(readRoute);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const mobileMenuRef = useRef<HTMLElement | null>(null);
+  const [modal, setModal] = useState<Modal | null>(null);
+  const [projectList, setProjectList] = useState<Project[]>(fallbackProjects);
+  const [authUser, setAuthUser] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [theme, setTheme] = useState<"light" | "dark">(() => window.localStorage.getItem("soundfaith-theme") === "dark" ? "dark" : "light");
+  const [notice, setNotice] = useState<Notice | null>(null);
+
+  useEffect(() => {
+    const handleNotice = (event: Event) => setNotice((event as CustomEvent<Notice>).detail);
+    window.addEventListener("soundfaith-notice", handleNotice);
+    return () => window.removeEventListener("soundfaith-notice", handleNotice);
+  }, []);
+
+  const refreshUnreadNotifications = () => {
+    if (!authUser) {
+      setUnreadNotifications(0);
+      return;
+    }
+    void identityRepository.getNotifications(0, 20)
+      .then((items) => setUnreadNotifications(items.filter((item) => !item.read_at).length))
+      .catch(() => setUnreadNotifications(0));
+  };
+
+  useEffect(() => {
+    refreshUnreadNotifications();
+    window.addEventListener("soundfaith-notifications-changed", refreshUnreadNotifications);
+    return () => window.removeEventListener("soundfaith-notifications-changed", refreshUnreadNotifications);
+  }, [authUser, route.name]);
+
+  useEffect(() => {
+    if (!mobileMenu) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!mobileMenuRef.current?.contains(target)) setMobileMenu(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [mobileMenu]);
+
+  useEffect(() => {
+    const changeRoute = () => {
+      if (route.name === "all-projects")
+        sessionStorage.setItem(
+          "soundfaith-projects-scroll",
+          String(window.scrollY),
+        );
+      setRoute(readRoute());
+      setMobileMenu(false);
+    };
+    window.addEventListener("hashchange", changeRoute);
+    return () => window.removeEventListener("hashchange", changeRoute);
+  }, [route]);
+  useEffect(() => {
+    const hash = window.location.hash.replace(/^#\/?/, "");
+    const [path, query = ""] = hash.split("?");
+    if (route.name === "all-projects") {
+      const savedScroll = sessionStorage.getItem("soundfaith-projects-scroll");
+      window.requestAnimationFrame(() =>
+        window.scrollTo(0, savedScroll ? Number(savedScroll) : 0),
+      );
+    } else if (route.name === "home") {
+      const section =
+        new URLSearchParams(query).get("section") ??
+        (path === "projects" || path === "how-it-works" ? path : null);
+      if (section)
+        window.requestAnimationFrame(() =>
+          document
+            .getElementById(section)
+            ?.scrollIntoView({ behavior: "smooth" }),
+        );
+    }
+  }, [route]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+  const toggleTheme = () => {
+    const next = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    window.localStorage.setItem("soundfaith-theme", next);
+  };
+  useEffect(() => {
+    let active = true;
+    const handleSession = async (email: string | null) => {
+      if (!active) return;
+      if (!email) {
+        setAuthUser(null);
+        setAuthLoading(false);
+        return;
+      }
+      setAuthUser(email);
+      setAuthLoading(false);
+      const profile = await identityRepository.syncProfile().catch(() => null);
+      const activeWallet = await getActiveBrowserWallet().catch(() => null);
+      const walletAddress = profile?.wallet_address ?? activeWallet?.address ?? null;
+      const localWallet = walletAddress
+        ? await activateBrowserWalletForAddress(walletAddress)
+        : activeWallet;
+      if (localWallet && profile?.email) {
+        await claimBrowserWalletForEmail(localWallet.address, profile.email);
+      }
+      if (!localWallet) {
+        // A wallet is only cleared when the user explicitly removes it or logs out.
+      } else {
+        await identityRepository.syncProfile(localWallet.address).catch(() => {});
+      }
+    };
+    projectRepository
+      .list()
+      .then((remote) => {
+        if (!active || !remote.length) return;
+        void Promise.all(remote.map((project) => projectRepository.syncProjectFromChain(project).catch(() => project)))
+          .then((synced) => { if (active) setProjectList(synced); });
+      })
+      .catch(() => {});
+    if (!supabase)
+      return () => {
+        active = false;
+        setAuthLoading(false);
+      };
+    supabase.auth
+      .getUser()
+      .then(({ data }) => handleSession(data.user?.email ?? null));
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        void handleSession(session?.user?.email ?? null);
+      },
+    );
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const project = useMemo(
+    () => projectList.find((item) => item.id === route.id),
+    [projectList, route],
+  );
+  const openChurch = () => {
+    window.location.hash = "#/churches";
+  };
+  const ensureWalletForAction = async (action: "churches" | "donate", project?: Project) => {
+    if (!authUser && action === "churches") {
+      setModal({ type: "wallet" });
+      return;
+    }
+    const address = await getBrowserWalletAddress().catch(() => null);
+    if (!address) {
+      setModal({ type: "wallet-setup", walletAddress: null, project: action === "donate" ? project : undefined });
+      return;
+    }
+    if (action === "donate" && project) setModal({ type: "donate", project });
+    else window.location.hash = "#/churches";
+  };
+  const openProject = (item: Project) => {
+    window.location.hash = `#/projects/${item.id}`;
+  };
+  const openDonate = (item: Project) =>
+    void ensureWalletForAction("donate", item);
+
+  const page =
+    route.name === "project" && project ? (
+      <ProjectPage project={project} onDonate={() => openDonate(project)} />
+    ) : route.name === "all-projects" ? (
+      <AllProjectsPage
+        projects={projectList}
+        onProject={openProject}
+        onDonate={(item) => { void ensureWalletForAction("donate", item); }}
+      />
+    ) : route.name === "churches" ? (
+      <ChurchPage authenticated={Boolean(authUser)} onSignIn={() => setModal({ type: "wallet" })} onRequireWallet={() => void ensureWalletForAction("churches")} />
+    ) : route.name === "terms" ? (
+      <TermsPage />
+    ) : route.name === "profile" ? (
+      <ProfilePage />
+    ) : route.name === "notifications" || route.name === "activities" || route.name === "inbox" ? (
+      <InboxPage />
+    ) : route.name === "review" ? (
+      <ReviewPage />
+    ) : route.name === "admin" ? (
+      <AdminPage />
+    ) : (
+          <HomePage
+        projects={projectList}
+        onProject={openProject}
+        onDonate={(item) => { void ensureWalletForAction("donate", item); }}
+      />
+    );
+  return (
+    <div className="app-shell">
+      <header className="site-header">
+        <Brand />
+        <nav
+          ref={mobileMenuRef}
+          className={mobileMenu ? "main-nav nav-open" : "main-nav"}
+          aria-label="Primary navigation"
+        >
+          <a href="#/all-projects" onClick={() => setMobileMenu(false)}>
+            {authUser ? "Browse" : "Browse Projects"}
+          </a>
+          <a href="#/churches" onClick={(event) => { event.preventDefault(); setMobileMenu(false); openChurch(); }}>Create Project</a>
+          {authUser && <a href="#/inbox" onClick={() => setMobileMenu(false)}>Inbox</a>}
+        </nav>
+        <div className="header-actions">
+          {!authUser && <ThemeToggle theme={theme} onToggle={toggleTheme} />}
+          <a
+            className="button button-dark header-wallet"
+            href={authUser ? "#/profile" : "#/"}
+            onClick={(event) => {
+              if (!authUser) {
+                event.preventDefault();
+                setModal({ type: "wallet" });
+              }
+            }}
+          >
+            <Wallet size={15} /> {authUser ? "Profile" : "Sign in"}
+          </a>
+          <button
+            className="icon-button mobile-toggle"
+            aria-label={mobileMenu ? "Close menu" : "Open menu"}
+            onClick={() => setMobileMenu(!mobileMenu)}
+          >
+            {mobileMenu ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+      </header>
+      {page}
+      <Toast notice={notice} close={() => setNotice(null)} />
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        <a href="#/" className={route.name === "home" ? "active" : ""}>
+          <Home size={17} />
+          <span>Home</span>
+        </a>
+        {!authUser ? <a href="#/all-projects" className={route.name === "all-projects" ? "active" : ""}>
+          <Search size={17} />
+          <span>Browse</span>
+        </a> : <a href="#/churches" className={route.name === "churches" ? "active" : ""} onClick={(event) => { event.preventDefault(); openChurch(); }}>
+          <Plus size={17} />
+          <span>Create</span>
+        </a>}
+        <a href="#/all-projects" className="mobile-donate">
+          <Heart size={20} />
+          <span>Donate</span>
+        </a>
+        {!authUser ? <>
+          <a href="#/churches" className={route.name === "churches" ? "active" : ""} onClick={(event) => { event.preventDefault(); openChurch(); }}>
+            <Plus size={17} />
+            <span>Create</span>
+          </a>
+          <a href="#/" onClick={(event) => { event.preventDefault(); setModal({ type: "wallet" }); }}>
+            <UserRound size={17} />
+            <span>Sign in</span>
+          </a>
+        </> : <>
+          <a href="#/inbox" className={route.name === "inbox" || route.name === "activities" || route.name === "notifications" ? "active" : ""}>
+            <span className="mobile-profile-icon-wrap">
+              <Bell size={17} />
+              {unreadNotifications > 0 && <span className="notification-badge">{unreadNotifications > 9 ? "9+" : unreadNotifications}</span>}
+            </span>
+            <span>Inbox</span>
+          </a>
+          <a href="#/profile" className={route.name === "profile" ? "active" : ""}>
+            <UserRound size={17} />
+            <span>Profile</span>
+          </a>
+        </>}
+      </nav>
+      <footer className="site-footer">
+        <div className="footer-brand">
+          <span className="wordmark-mark">sf</span>
+          <span>Helping good work reach the people who need it.</span>
+        </div>
+        <div className="footer-bottom">
+          <span>© 2026 SoundFaith</span>
+          <span className="footer-status">
+            <i /> TX testnet · local demo
+          </span>
+          <span>Made with intention</span>
+        </div>
+      </footer>
+      {modal && (
+        <ModalLayer
+          modal={modal}
+          close={() => setModal(null)}
+          onDonate={openDonate}
+          ownerEmail={authUser}
+        />
+      )}
+    </div>
+  );
+}
